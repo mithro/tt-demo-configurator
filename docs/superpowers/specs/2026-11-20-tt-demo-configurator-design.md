@@ -30,7 +30,7 @@ This app makes that workflow repeatable by anyone, from a web page, without writ
   - choose designs, with easy sorting, filtering and search, for example by Pmod;
   - set each design's duration, clock and idle `ui_in`;
   - give it a fixed input script (`steps`).
-- Preview the sequence with no board attached (simulation or recorded videos).
+- Preview the sequence with no board attached: recorded videos in v1, simulation in a later milestone.
 - Test the sequence live on a board without changing how it boots.
 - Make it permanent, so the board runs the demo on every power-up with no computer.
 - Turn demo mode on and off, and return the board to 100% stock.
@@ -43,7 +43,13 @@ This app makes that workflow repeatable by anyone, from a web page, without writ
   what all three real game demos used.
 - Holding sequences for several chips on one board, so it still works when the daughterboard is swapped
   (the later "demo board" idea). The file format allows it later, since each file names its shuttle.
-- RP2040-era boards with firmware older than the 3.x SDK.
+- RP2040 boards of any firmware version. v1 supports RP2350 (TTDBv3) boards only, matching current
+  firmware. RP2040 boards are detected and refused with a clear message.
+- Demo sequences on the FPGA emulation board. v1 only detects it, shows "FPGA board" and doesn't offer
+  the editor or make-permanent. Full FPGA support (a design list from the bitstreams and an FPGA
+  `shuttle` value) is a later extension.
+- Simulation preview. v1 previews with the recorded VGA videos. The vga-playground fork with an embed
+  mode is a later milestone of this plan, needed for previewing games' `steps`.
 - Flashing firmware from the browser. Like the commander, the app links to the `.uf2` and helps the
   user get the board into bootloader mode.
 
@@ -197,12 +203,15 @@ same files as its ready-made sequences, and doesn't keep a second, separately ed
 
 ### Preview without a board
 
-- For designs with `steps: []` that have a recorded video: play the VGA-videos clip at real speed.
-- For designs with steps, or with no video: simulate in a fork of vga-playground (`mithro/vga-playground`),
-  and run the `steps` script against the simulation's `ui_in`. The fork adds an embed mode:
-  load a project by repo and commit, set `ui_in`, reset, and report frames. It's used in an iframe or
-  as a module. Expect slower than real time for large or fast designs. Some designs won't simulate,
-  and those show "no preview".
+- **v1:** play each design's recorded VGA-videos clip at real speed, with "no preview" for designs
+  that have no clip. For designs with `steps`, the clip is labelled as recorded with its own inputs,
+  not the user's script.
+- **Later milestone (in this plan, after v1):** simulate in a fork of vga-playground
+  (`mithro/vga-playground`, which doesn't exist yet and is created as part of this plan), and run the
+  `steps` script against the simulation's `ui_in`. The fork adds an embed mode, used in an iframe
+  with `postMessage`: load a project by repo and commit, set `ui_in`, reset, and report frames. Expect
+  slower than real time for large or fast designs. Some designs won't simulate, and those show
+  "no preview".
 - A timeline of the whole sequence, with each entry's duration.
 
 ### Testing on a board without changing boot
@@ -271,6 +280,9 @@ simulation (the user's inputs, but possibly slow). The choice per design is abov
 - Gamepad emulation is v2.
 - Detecting and switching firmware type works the way the commander offers upgrades.
 - Offline mode with preview from vga-playground and the videos. A fork of vga-playground is fine.
+  Recorded videos come first in v1, and simulation follows as a later milestone.
+- RP2350 boards only in v1.
+- The FPGA board is detected only in v1, with full support as a later extension.
 - The repo deploys the app with GitHub Pages: a static site built and published by a GitHub Actions
   workflow on pushes to `main`, as the commander does.
 
@@ -280,7 +292,30 @@ simulation (the user's inputs, but possibly slow). The choice per design is abov
   device and REPL code, and theme (`#544ead` primary, `#8afbfd` secondary).
 - **Licence**: Apache-2.0.
 - **Repository**: `mithro/tt-demo-configurator`, local at `~/github/TinyTapeout/tt-demo-configurator`.
-- The UI layout and the exact error-pattern visuals.
+- The UI layout.
+- **The file keys on `shuttle` only, not on the ROM commit.** The firmware loads one project list per
+  shuttle for both GF 0p2 dies (TTP2 `7416232b` and power-gated TTPG `ff701baa`), so addresses are the
+  same. The commit is shown to the user but isn't checked. A ROM with an empty commit is fine. A ROM
+  reporting `unknown`, as on board `07a361dd…`, can't be configured: the app says the chip couldn't be
+  identified (check the chip is seated) and doesn't offer make-permanent.
+- **Validation is against the board's own project list.** When the board's firmware can't load the
+  chip's project list (board `1efa3e18…`: ttsky25a, 0 projects), the app refuses make-permanent and
+  offers the firmware upgrade, because every entry would fail and the board would only show the error
+  pattern. It never uploads index files itself.
+- **There are two validators, kept in line by shared fixtures.** The app has a TypeScript validator for
+  instant feedback while editing, which also checks addresses against `index.tinytapeout.com`. Before
+  make-permanent and before a live test, it also runs the board's own `validate()` over the REPL, using
+  the firmware's module or the helper's copy of `demo.py`. The board's answer is final. Both validators
+  are tested against the same good and bad fixture files, taken from the firmware repo.
+- **Boards set up by hand in Shenzhen are a fourth detected state, "hand-made demo".** It is detected by
+  `/vga_cycle.py` existing and `main.py` importing it. The app offers to **import** it: it reads
+  `VGA_DESIGNS`, maps each macro to its address via the board's project list, and turns it into a
+  `demo.json` the user can edit (the game players become empty `steps`, flagged for a script). After
+  that, the app offers to migrate the board to the helper, removing `vga_cycle.py` and restoring the
+  stock `main.py` from the backup.
+- **"Confirm stock" checks `main.py` exactly** against the known stock file for that SDK version. It
+  checks only the `demo` line in `config.ini`, because users legitimately edit the rest. A mismatch
+  warns and asks before continuing. It doesn't block.
 
 ## Open items
 
