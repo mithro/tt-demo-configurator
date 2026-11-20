@@ -73,14 +73,25 @@ implement an earlier draft and are being updated to the format below.
 - `config.ini` `[DEFAULT] demo = yes` turns demo mode on.
 - Holding a key at boot (the hold-RST trigger) flips the setting for that one boot.
 - With demo mode on, the board uses `/demo.json` if it exists, otherwise
-  `/shuttles/<detected shuttle>.demo.json`.
+  `/shuttles/<detected shuttle>.demo.json`, otherwise it fails with "no demo sequence". An invalid
+  `/demo.json` is an error and does NOT fall back to the bundled file.
 - Starting any project by hand (REPL or commander) stops the demo.
+- Implemented on `mithro/tt-micropython-firmware` branch `demo-mode` (451f04d): `src/ttboard/demo.py`,
+  the `main.py` hook, a commented `# demo = no` in `config.ini`, and `demo.md`. Errors are collected in
+  `tt.demo.errors`, and the boot banner says "Demo mode FAILED: see tt.demo.errors". The app reads both
+  to show the user why a board isn't running its demo.
 
 ### (b2) Helper on stock firmware
 
 The app installs:
 - `demo.py`, the runner, using only the SDK's public API (it has been verified from RAM on stock SDK 3.1.0);
-- a wrapper `main.py` that runs the saved stock main (`main_stock.py`) and then starts the demo.
+- a wrapper `main.py` that runs the saved stock main (`main_stock.py`) and then calls
+  `autostart(tt, False)` from the demo module.
+
+`demo.py` is the same module as the firmware's `src/ttboard/demo.py`, which reads `config.ini` with the
+SDK's own ConfigParser. The stock `ttboard` package is frozen into the firmware, so the helper can't add
+`ttboard/demo.py` to it. It is installed as a top-level module instead, and the app bundles a pinned copy
+taken from the firmware branch.
 
 It reads the same `config.ini` setting and the same files, and behaves the same, except that there is no
 boot-key trigger: the stock boot has already used the RST line by the time the wrapper runs. Tim accepts
@@ -88,9 +99,14 @@ this.
 
 ### (c) Default sequences
 
-`/shuttles/<shuttle>.demo.json` files are bundled next to the existing chip index files. The same
-curated files also ship inside this app as its ready-made sequences, so there is one set of files, used
-in both places. Where they live and how they are built is decided with the firmware owner.
+`/shuttles/<shuttle>.demo.json` files are bundled next to the existing chip index files. Their source is
+`demos/<shuttle>.demo.json` in `mithro/tt-micropython-firmware` (branch `demo-shuttle-sequences`,
+9d20803). The release build runs `bin/check_demo_sequences.py`, which runs the board's own `validate()`
+against the freshly downloaded shuttle index. A missing address, a group, a project not marked safe or
+any format error fails the build.
+
+The firmware's `demos/` folder is the single source of the curated files. The app bundles copies of the
+same files as its ready-made sequences, and doesn't keep a second, separately edited set.
 
 ## The file format (shared by `/demo.json` and `/shuttles/<id>.demo.json`)
 
@@ -124,9 +140,17 @@ in both places. Where they live and how they are built is decided with the firmw
   - an unknown address or subtile;
   - a bad step;
   - an unknown field.
-- **Open:** how the board shows the error. The TTDBv3 7-segment display is driven by the ASIC's `uo_out`,
-  not by the RP2350. The firmware owner is to propose a mechanism (a project that mirrors `ui_in`, a
-  bundled bitstream on FPGA, or the RP2350's own LED). The (b2) helper must do the same thing.
+- `clock_hz` 0 means the clock is stopped.
+- **How the error is shown** (firmware's `ErrorDisplay`, also used by the (b2) helper):
+  1. Enable `tt_um_factory_test`, which is on every shuttle and in the FPGA bitstreams. While held in
+     reset it copies `ui_in` to `uo_out`.
+  2. Force ASIC_RP_CONTROL mode.
+  3. Stop the clock and hold reset.
+  4. Blink "E" (`0x79`) at 2 Hz, with the RP2350 LED on GPIO11 blinking in step.
+
+  If the factory test can't be enabled, only the LED blinks. Enabling any project by hand stops the
+  display. This has been verified on fpga-1 from RAM; the segments themselves haven't been checked on
+  camera yet.
 
 ## The app
 
@@ -260,8 +284,8 @@ simulation (the user's inputs, but possibly slow). The choice per design is abov
 
 ## Open items
 
-1. How the error pattern is shown (firmware owner).
-2. Whether flashing the release `.uf2` wipes the filesystem (verify).
-3. A release process for the custom demo firmware `.uf2`, since only branches exist today (firmware owner).
-4. Where the bundled per-shuttle default files live, and how the app and the firmware share them.
-5. The fixed step scripts for Crossyroad, Connect Four and Shady Pong.
+1. Whether flashing the release `.uf2` wipes the filesystem (verify).
+2. A release process for the custom demo firmware `.uf2`, since only branches exist today (firmware owner).
+3. How the app gets copies of the firmware's `demos/` files and of `demo.py`: a build-time fetch from
+   a pinned firmware commit, a git submodule, or a release asset.
+4. The fixed step scripts for Crossyroad, Connect Four and Shady Pong.
