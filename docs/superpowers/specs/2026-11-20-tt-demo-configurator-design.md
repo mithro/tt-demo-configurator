@@ -247,11 +247,13 @@ simulation (the user's inputs, but possibly slow). The choice per design is abov
 - Gamepad emulation is v2.
 - Detecting and switching firmware type works the way the commander offers upgrades.
 - Offline mode with preview from vga-playground and the videos. A fork of vga-playground is fine.
+- The repo deploys the app with GitHub Pages: a static site built and published by a GitHub Actions
+  workflow on pushes to `main`, as the commander does.
 
 ## Builder's calls (Claude's proposals, open to correction)
 
 - **Stack**: SolidJS, SUID and Vite, matching the commander (`TinyTapeout/tt-commander-app`). Reuse its
-  device and REPL code, theme (`#544ead` primary, `#8afbfd` secondary) and GitHub Pages deployment.
+  device and REPL code, and theme (`#544ead` primary, `#8afbfd` secondary).
 - **Licence**: Apache-2.0.
 - **Repository**: `mithro/tt-demo-configurator`, local at `~/github/TinyTapeout/tt-demo-configurator`.
 - The UI layout and the exact error-pattern visuals.
