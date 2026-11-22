@@ -1,0 +1,70 @@
+# Tiny Tapeout Demo Configurator
+
+A web page for turning a [Tiny Tapeout](https://tinytapeout.com) dev board into a booth demo:
+with a screen plugged into its VGA Pmod and no computer attached, the board cycles through
+the chip's VGA designs and plays the games among them with scripted button presses.
+
+**Use it:** https://mithro.github.io/tt-demo-configurator/ (Chrome or Edge on a desktop: it
+talks to the board over WebSerial).
+
+- Pick designs for a chip, filtered by Pmod (Tiny VGA by default), with each design's
+  recorded video from the [Tiny Tapeout VGA videos](https://data.wafer.space/big-storage/tinytapeout-vga-videos/).
+- Set each design's time on screen, clock, starting `ui_in`, and a fixed input script.
+- Preview the sequence without a board, try it on a board from RAM (nothing written), then
+  make it permanent, turn it off, or put the board back to exactly stock.
+- Works with the stock firmware (it installs a small helper) and with the demo-mode firmware.
+- Ready-made sequences for the four boards shown at the Shenzhen open-silicon meetup (2026-11).
+
+## The demo.json format
+
+The board runs `/demo.json`, or the firmware's bundled `/shuttles/<shuttle>.demo.json`:
+
+```json
+{"version": 1, "shuttle": "ttsky25a", "projects": [
+  {"address": 260, "subtile": 0, "duration_ms": 30000, "clock_hz": 25000000, "ui_in": 7,
+   "steps": [{"set": 5}, {"wait_ms": 40}, {"set": 7}, {"wait_ms": 120}]}]}
+```
+
+Every field is required and there is one way to write each thing. A step is
+`{"set": 0..255}` (write `ui_in`) or `{"wait_ms": N}`; when the steps run out the project is
+reset and they start again. An invalid file never runs partly: the board logs every problem
+and blinks **E** on the 7-segment display. The full description is
+[demo.md](https://github.com/mithro/tt-micropython-firmware/blob/demo-shuttle-sequences/demo.md)
+in the firmware.
+
+## How it works with the board's firmware
+
+| Board | Demo mode comes from |
+|---|---|
+| Demo-mode firmware | built in: `config.ini` `demo = yes`; hold RST at power-up to flip it for one boot |
+| Stock firmware | the helper this app installs: `/demo.py`, and a `/main.py` that runs the original (kept as `/main_stock.py`) and then the demo |
+
+`/demo.py` is a pinned copy of the firmware's `ttboard/demo.py` (LGPL-2.1, like the firmware),
+in `src/data/demo.py`.
+
+## Development
+
+```sh
+npm ci
+npm run dev        # http://localhost:5173
+npm test           # unit tests; some run board-side Python in CPython (needs uv)
+npm run build
+```
+
+Board-side code is tested without hardware: `test/fake_board.py` runs the Python the app
+sends in CPython, with `/` mapped to a scratch directory. The validator's fixtures in
+`test/fixtures/` carry the errors the firmware itself reports
+(`scripts/firmware-errors.py`), so the app and the board agree word for word.
+
+Data refresh scripts:
+
+- `scripts/update-videos.py`: the trimmed VGA-videos index (`src/data/videos.json`).
+- `scripts/update-stock-main.py`: the stock `main.py` of every SDK 3.x release.
+- `scripts/make-shenzhen-demos.py`: the ready-made sequences.
+- `scripts/check-micropython.py`: compile the board-side Python with `mpy-cross`.
+
+Pushes to `main` are deployed to GitHub Pages by `.github/workflows/pages.yml`.
+
+## Licence
+
+Apache-2.0, except `src/data/demo.py` (LGPL-2.1, from the firmware).
