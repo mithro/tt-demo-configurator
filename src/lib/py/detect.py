@@ -1,13 +1,16 @@
 # Sent by the Tiny Tapeout demo configurator: report what this board is and how its
 # demo mode is set up, as one line "DETECT:<json>". Read-only.
 def _tt_demo_detect():
-    import json, os, sys
+    import gc, json, os, sys
+    gc.collect()
     r = {'errors': []}
 
-    def text(path, limit=65536):
+    def text(path):
+        # read() allocates only the file's size; a fixed read(N) allocates N bytes up
+        # front, which fails once the demo module is loaded on a busy heap
         try:
             with open(path) as f:
-                return f.read(limit)
+                return f.read()
         except OSError:
             return None
 
