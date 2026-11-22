@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: Apache-2.0
+// A Transport that behaves like a MicroPython board's raw REPL, for tests. Each received
+// command (code up to Ctrl-D) is passed to `handle`, and its {out, err} is sent back with
+// the raw REPL framing, split into small chunks to exercise reassembly.
+import type { Transport } from '~/lib/rawRepl';
+
+export type Handler = (code: string) => Promise<{ out: string; err: string } | 'hang'> | { out: string; err: string } | 'hang';
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+export class FakeTransport implements Transport {
+  private queue: Uint8Array[] = [];
+  private waiter: ((v: Uint8Array | null) => void) | null = null;
+  private code = '';
+  private raw = false;
+  private closed = false;
+  readonly commands: string[] = [];
+  written = '';
+
+  constructor(
+    private readonly handle: Handler,
+    private readonly chunk = 7,
+  ) {}
+
+  private send(text: string) {
+    const bytes = enc.encode(text);
+    for (let i = 0; i < bytes.length; i += this.chunk) this.push(bytes.slice(i, i + this.chunk));
+  }
+
+  private push(b: Uint8Array | null) {
+    if (this.waiter) {
+      const w = this.waiter;
+      this.waiter = null;
+      w(b);
+    } else if (b) this.queue.push(b);
+  }
+
+  async write(data: Uint8Array) {
+    for (const byte of data) {
+      this.written += String.fromCharCode(byte);
+      if (byte === 0x01) {
+        this.raw = true;
+        this.code = '';
+        this.send('raw REPL; CTRL-B to exit\r\n>');
+      } else if (byte === 0x02) {
+        this.raw = false;
+      } else if (byte === 0x03) {
+        this.code = '';
+      } else if (byte === 0x04 && this.raw) {
+        const code = this.code;
+        this.code = '';
+        this.commands.push(code);
+        this.send('OK');
+        const r = await this.handle(code);
+        if (r !== 'hang') this.send(`${r.out}\x04${r.err}\x04>`);
+      } else if (this.raw) {
+        this.code += dec.decode(new Uint8Array([byte]));
+      }
+    }
+  }
+
+  read(): Promise<Uint8Array | null> {
+    const b = this.queue.shift();
+    if (b) return Promise.resolve(b);
+    if (this.closed) return Promise.resolve(null);
+    return new Promise((r) => (this.waiter = r));
+  }
+
+  async close() {
+    this.closed = true;
+    this.push(null);
+  }
+}
