@@ -2,26 +2,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { formatDemo, Lookup, parseDemoText, pyRepr, validateDemo } from './demoFile';
+import { formatDemo, parseDemoText, pyRepr, validateDemo } from './demoFile';
+import { indexLookup, toProject } from './shuttleIndex';
 
 const FIX = path.resolve(__dirname, '../../test/fixtures');
 const SHUTTLE = 'ttsky25a';
 
-// The same lookup the firmware's release check builds from an index (check_demo_sequences.py).
-export function indexLookup(index: { projects: Record<string, unknown>[] }): Lookup {
-  const map = new Map<string, { macro: string; danger_level?: string }>();
-  for (const p of index.projects) {
-    if (p.type === 'group') continue;
-    const sub = Number(p.subtile_addr ?? 0);
-    map.set(String(sub ? `${p.address}-${sub}` : Number(p.address)), p as never);
-  }
-  return (key) => {
-    const p = map.get(String(key));
-    return p ? { name: p.macro, dangerous: p.danger_level !== undefined && p.danger_level !== 'safe' } : null;
-  };
-}
-
-const lookup = indexLookup(JSON.parse(readFileSync(path.join(FIX, 'index.json'), 'utf8')));
+// the same lookup the firmware's release check builds from an index (check_demo_sequences.py)
+const lookup = indexLookup(JSON.parse(readFileSync(path.join(FIX, 'index.json'), 'utf8')).projects.map(toProject).filter((p: { type?: string }) => p.type !== 'group'));
 
 describe('validateDemo agrees with the firmware', () => {
   for (const name of readdirSync(path.join(FIX, 'good'))) {
