@@ -3,7 +3,7 @@
 import { Alert, Box, Button, Card, CardContent, IconButton, MenuItem, Select, Stack, TextField, Typography } from '@suid/material';
 import { createMemo, For, onMount, Show } from 'solid-js';
 import type { Entry } from '~/lib/demoFile';
-import { uiName } from '~/lib/shuttleIndex';
+import { projectKey, uiName } from '~/lib/shuttleIndex';
 import * as act from './actions';
 import { state as s } from './state';
 import { StepEditor } from './StepEditor';
@@ -88,7 +88,11 @@ function EntryEditor(props: { index: number }) {
       <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #eee' }}>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
           <Typography variant="subtitle1" sx={{ flexGrow: 1, minWidth: 0 }} noWrap>
-            <b>{p()?.title ?? 'Unknown project'}</b> <span style={{ opacity: 0.6, 'font-size': '0.85em' }}>{p()?.macro}</span>
+            <b>{p()?.title ?? 'Unknown project'}</b>{' '}
+            <span style={{ opacity: 0.6, 'font-size': '0.85em' }}>
+              address {projectKey(e())}
+              {p() ? ` · ${p()!.macro}` : ''}
+            </span>
           </Typography>
           <Show when={s.board()}>
             <Button size="small" onClick={() => act.previewEntry(props.index, false)} disabled={s.busy() !== null}>
@@ -100,9 +104,7 @@ function EntryEditor(props: { index: number }) {
           </Show>
         </Stack>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '5.5em 5em 7em minmax(9em, 14em)' }, gap: 1, mt: 1.5, alignItems: 'start' }}>
-          <IntField label="Address" value={e().address} min={0} onChange={(v) => set({ address: v })} />
-          <IntField label="Subtile" value={e().subtile} min={0} onChange={(v) => set({ subtile: v })} />
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '8em minmax(9em, 14em)' }, gap: 1, mt: 1.5, alignItems: 'start' }}>
           <IntField label="Show for (s)" value={e().duration_ms} scale={1000} step={0.5} min={0.001} onChange={(v) => set({ duration_ms: v })} />
           <div>
             <IntField label="Clock (Hz)" value={e().clock_hz} min={0} onChange={(v) => set({ clock_hz: v })} />

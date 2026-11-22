@@ -21,7 +21,7 @@ export function recordingNote(shuttle: string, macro: string | undefined): strin
   return v ? VERDICTS[v] : undefined;
 }
 
-export function Clip(props: { shuttle: string; macro: string | undefined; note?: string; paused?: boolean }) {
+export function Clip(props: { shuttle: string; macro: string | undefined; note?: string; paused?: boolean; pausedLabel?: string }) {
   const urls = () => (props.macro ? clipUrls(props.shuttle, props.macro) : null);
   const [state, setState] = createSignal<'loading' | 'playing' | 'paused' | 'error'>('loading');
   const [progress, setProgress] = createSignal(0);
@@ -35,7 +35,7 @@ export function Clip(props: { shuttle: string; macro: string | undefined; note?:
     else if (video.paused && untrack(state) !== 'error') void video.play().catch(() => undefined);
   });
   const label = () =>
-    ({ loading: 'loading the recording…', playing: `playing · ${length() ? `${Math.floor(progress() * length())} of ${Math.round(length())} s, looping` : ''}`, paused: 'paused (click to play)', error: "couldn't load the recording" })[state()];
+    ({ loading: 'loading the recording…', playing: `playing · ${length() ? `${Math.floor(progress() * length())} of ${Math.round(length())} s, looping` : ''}`, paused: props.pausedLabel ?? 'paused (click to play)', error: "couldn't load the recording" })[state()];
   return (
     <Show
       when={urls()}
@@ -60,6 +60,7 @@ export function Clip(props: { shuttle: string; macro: string | undefined; note?:
             onPause={() => setState('paused')}
             onError={() => setState('error')}
             onLoadedMetadata={(e) => setLength(e.currentTarget.duration || 0)}
+            onLoadedData={(e) => e.currentTarget.paused && setState('paused')}
             onTimeUpdate={(e) => setProgress(e.currentTarget.duration ? e.currentTarget.currentTime / e.currentTarget.duration : 0)}
             onClick={(e) => (e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause())}
             style={{ width: '100%', 'aspect-ratio': '4 / 3', background: '#000', display: 'block', cursor: 'pointer' }}
@@ -155,7 +156,8 @@ export function Preview() {
         <Clip
           shuttle={s.seq.shuttle}
           macro={macro()}
-          paused={mode() === 'paused'}
+          paused={mode() !== 'playing'}
+          pausedLabel={mode() === 'paused' ? 'sequence paused' : 'not playing: press Play sequence, or click the clip to watch just this design'}
           note={entry()?.steps.length ? 'Recorded with the design’s own test inputs, not this entry’s steps.' : undefined}
         />
         <Typography variant="body2" sx={{ mt: 1 }}>
