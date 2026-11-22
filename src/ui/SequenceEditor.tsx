@@ -152,14 +152,23 @@ export function SequenceEditor() {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-          <Typography variant="h6">Sequence for</Typography>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ whiteSpace: 'nowrap' }}>
+            Sequence for
+          </Typography>
           <Select size="small" value={s.seq.shuttle} displayEmpty onChange={(e) => void s.chooseShuttle(e.target.value)}>
             <MenuItem value="">choose a shuttle…</MenuItem>
             <For each={shuttleOptions()}>{(id) => <MenuItem value={id}>{id}</MenuItem>}</For>
           </Select>
           <span style={{ 'flex-grow': 1 }} />
-          <Select size="small" value="" displayEmpty onChange={(e) => e.target.value && act.openText(e.target.value, 'a ready-made sequence')}>
+          <Show when={s.seq.projects.length}>
+            <Typography variant="caption" sx={{ whiteSpace: 'nowrap' }}>
+              {s.seq.projects.length} designs · {(s.seq.projects.reduce<number>((n, e) => n + e.duration_ms, 0) / 1000).toFixed(0)} s loop
+            </Typography>
+          </Show>
+        </Stack>
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1, pb: 1, borderBottom: '1px solid #eee' }}>
+          <Select size="small" variant="standard" value="" displayEmpty sx={{ fontSize: '13px', mr: 1 }} onChange={(e) => e.target.value && act.openText(e.target.value, 'a ready-made sequence')}>
             <MenuItem value="">ready-made…</MenuItem>
             <For each={readyMade}>{(r) => <MenuItem value={r.text}>{r.shuttle} (Shenzhen 2026)</MenuItem>}</For>
           </Select>

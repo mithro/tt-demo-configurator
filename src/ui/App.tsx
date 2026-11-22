@@ -61,19 +61,24 @@ function BoardStatus() {
 
 const HEADER = 48;
 
-function Column(props: { children: any; label: string }) {
+/**
+ * One column. A plain flex column that scrolls, except `fill`, which hands its height to
+ * its one child (the design library) so that child can scroll a part of itself. (Not a
+ * grid: grid items with overflow:hidden, like cards, shrink to fit and get clipped.)
+ */
+function Column(props: { children: any; label: string; fill?: boolean }) {
   return (
     <Box
       component="section"
       aria-label={props.label}
       sx={{
-        display: 'grid',
+        display: 'flex',
+        flexDirection: 'column',
         gap: 2,
-        alignContent: 'start',
-        overflowY: { md: 'auto' },
+        overflowY: { md: props.fill ? 'hidden' : 'auto' },
         height: { md: `calc(100vh - ${HEADER}px)` },
         p: 2,
-        pb: 4,
+        '& > *': { flexShrink: props.fill ? 1 : 0 },
       }}
     >
       {props.children}
@@ -110,7 +115,7 @@ export function App() {
           minHeight: `calc(100vh - ${HEADER}px)`,
         }}
       >
-        <Column label="Designs">
+        <Column label="Designs" fill>
           <DesignList />
         </Column>
         <Column label="Sequence">

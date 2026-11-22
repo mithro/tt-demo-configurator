@@ -3,18 +3,38 @@
 // the sequence through with each entry's duration.
 import { Box, Button, Card, CardContent, Stack, Typography } from '@suid/material';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
-import { clipUrls } from '~/lib/shuttleIndex';
+import { clipUrls, videoInfo } from '~/lib/shuttleIndex';
 import { state as s } from './state';
+
+/** What the videos project found in a design's recording, when that isn't "it moves". */
+const VERDICTS: Record<string, string> = {
+  static: 'This recording never changes: the design shows a still picture (with its default inputs).',
+  'barely-moving': 'This recording changes only a little: most of the picture stays still.',
+  blank: 'This recording is blank: the design showed nothing with its default inputs.',
+  'no-sync': 'No stable VGA signal was recorded, so this clip may not match a real screen.',
+  'unstable-sync': 'The VGA signal was unstable while recording, so this clip may not match a real screen.',
+  'bad-timing': 'The VGA timing was unusual while recording, so this clip may not match a real screen.',
+};
+
+export function recordingNote(shuttle: string, macro: string | undefined): string | undefined {
+  const v = macro ? videoInfo(shuttle, macro)?.verdict : undefined;
+  return v ? VERDICTS[v] : undefined;
+}
 
 export function Clip(props: { shuttle: string; macro: string | undefined; note?: string }) {
   const urls = () => (props.macro ? clipUrls(props.shuttle, props.macro) : null);
+  const [state, setState] = createSignal<'loading' | 'playing' | 'paused' | 'error'>('loading');
+  const [progress, setProgress] = createSignal(0);
+  const [length, setLength] = createSignal(0);
+  const label = () =>
+    ({ loading: 'loading the recording…', playing: `playing · ${length() ? `${Math.floor(progress() * length())} of ${Math.round(length())} s, looping` : ''}`, paused: 'paused (click to play)', error: "couldn't load the recording" })[state()];
   return (
     <Show
       when={urls()}
       keyed
       fallback={
         <Box sx={{ aspectRatio: '4 / 3', background: '#111', color: '#aaa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {props.macro ? 'no preview recorded for this design' : 'nothing selected'}
+          {props.macro ? 'no recording of this design' : 'nothing selected'}
         </Box>
       }
     >
@@ -26,14 +46,31 @@ export function Clip(props: { shuttle: string; macro: string | undefined; note?:
             loop
             playsinline
             poster={u.poster}
-            style={{ width: '100%', 'aspect-ratio': '4 / 3', background: '#000', display: 'block' }}
+            onPlaying={() => setState('playing')}
+            onWaiting={() => setState('loading')}
+            onPause={() => setState('paused')}
+            onError={() => setState('error')}
+            onLoadedMetadata={(e) => setLength(e.currentTarget.duration || 0)}
+            onTimeUpdate={(e) => setProgress(e.currentTarget.duration ? e.currentTarget.currentTime / e.currentTarget.duration : 0)}
+            onClick={(e) => (e.currentTarget.paused ? void e.currentTarget.play() : e.currentTarget.pause())}
+            style={{ width: '100%', 'aspect-ratio': '4 / 3', background: '#000', display: 'block', cursor: 'pointer' }}
           >
             <source src={u.webm} type="video/webm" />
             <source src={u.mp4} type="video/mp4" />
           </video>
-          <Show when={props.note}>
-            <Typography variant="caption">{props.note}</Typography>
-          </Show>
+          <div style={{ height: '3px', background: '#ddd' }}>
+            <div style={{ height: '3px', width: `${progress() * 100}%`, background: state() === 'playing' ? '#544ead' : '#999' }} />
+          </div>
+          <Typography variant="caption" component="div" sx={{ color: state() === 'error' ? 'error.main' : 'text.secondary' }}>
+            {label()}
+          </Typography>
+          <For each={[recordingNote(props.shuttle, props.macro), props.note].filter(Boolean)}>
+            {(n) => (
+              <Typography variant="caption" component="div" sx={{ color: '#7a5c00' }}>
+                {n}
+              </Typography>
+            )}
+          </For>
         </div>
       )}
     </Show>

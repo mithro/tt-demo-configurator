@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// The shuttle's designs: filter by Pmod (Tiny VGA by default), search, sort, add to the
-// sequence; and a walk-through that shows them one at a time, like the Shenzhen set-up.
+// The shuttle's designs: search, filter by Pmod (Tiny VGA by default), sort, add to the
+// sequence; and a one-at-a-time review that shows each design's recording, like the
+// Shenzhen set-up. The list scrolls inside the card so the filters stay in view.
 import {
   Alert,
+  Box,
   Button,
   Card,
-  CardContent,
   Chip,
   Dialog,
   DialogActions,
@@ -18,19 +19,50 @@ import {
   Typography,
 } from '@suid/material';
 import { createMemo, createSignal, For, Show } from 'solid-js';
-import { clipUrls, pmodsOf, Project, projectKey, videoInfo } from '~/lib/shuttleIndex';
 import { showOne } from '~/lib/live';
-import { state as s, VGA_CLOCK_HZ } from './state';
+import { clipUrls, pmodsOf, Project, projectKey, videoInfo } from '~/lib/shuttleIndex';
 import { Clip } from './Preview';
+import { state as s, VGA_CLOCK_HZ } from './state';
 
 type Filter = 'tiny-vga' | 'gamepad' | 'all';
 type Sort = 'title' | 'address' | 'video';
+const FILTERS: [Filter, string][] = [
+  ['tiny-vga', 'Tiny VGA'],
+  ['gamepad', 'Gamepad'],
+  ['all', 'All'],
+];
+
+const THUMB = { width: '80px', height: '60px', 'flex-shrink': 0 } as const;
+
+function Thumb(props: { project: Project; onClick: () => void }) {
+  const clip = () => clipUrls(s.seq.shuttle, props.project.macro);
+  const still = () => ['static', 'blank'].includes(videoInfo(s.seq.shuttle, props.project.macro)?.verdict ?? '');
+  return (
+    <div style={{ ...THUMB, position: 'relative', background: '#222', cursor: clip() ? 'pointer' : 'default' }} onClick={() => clip() && props.onClick()}>
+      <Show
+        when={clip()}
+        fallback={
+          <div style={{ ...THUMB, color: '#999', 'font-size': '11px', display: 'flex', 'align-items': 'center', 'justify-content': 'center', 'text-align': 'center' }}>
+            no video
+          </div>
+        }
+      >
+        <img src={clip()!.poster} width={80} height={60} loading="lazy" alt="" style={{ ...THUMB, display: 'block', 'object-fit': 'cover', background: '#000' }} />
+        <Show when={still()}>
+          <span style={{ position: 'absolute', right: '2px', bottom: '2px', background: 'rgba(0,0,0,0.7)', color: '#ddd', 'font-size': '9px', padding: '0 3px', 'border-radius': '3px' }}>
+            still
+          </span>
+        </Show>
+      </Show>
+    </div>
+  );
+}
 
 export function DesignList() {
   const [filter, setFilter] = createSignal<Filter>('tiny-vga');
   const [query, setQuery] = createSignal('');
   const [sort, setSort] = createSignal<Sort>('title');
-  const [walk, setWalk] = createSignal<number | null>(null);
+  const [review, setReview] = createSignal<number | null>(null);
 
   const inSeq = createMemo(() => new Set(s.seq.projects.map((e) => projectKey(e))));
   const list = createMemo(() => {
@@ -42,22 +74,28 @@ export function DesignList() {
       return `${p.title} ${p.author} ${p.macro} ${p.address}`.toLowerCase().includes(q);
     });
     const by = sort();
-    const video = (p: Project) => (videoInfo(s.seq.shuttle, p.macro)?.verdict === 'ok' ? 0 : clipUrls(s.seq.shuttle, p.macro) ? 1 : 2);
+    const rank = (p: Project) => (videoInfo(s.seq.shuttle, p.macro)?.verdict === 'ok' ? 0 : clipUrls(s.seq.shuttle, p.macro) ? 1 : 2);
     return out.sort((a, b) =>
-      by === 'address' ? a.address - b.address || a.subtile - b.subtile : by === 'video' ? video(a) - video(b) || a.title.localeCompare(b.title) : a.title.localeCompare(b.title),
+      by === 'address'
+        ? a.address - b.address || a.subtile - b.subtile
+        : by === 'video'
+          ? rank(a) - rank(b) || a.title.localeCompare(b.title)
+          : a.title.localeCompare(b.title),
     );
   });
 
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+    <Card variant="outlined" sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: { md: 1 } }}>
+      <Box sx={{ p: 2, pb: 1, borderBottom: '1px solid #eee' }}>
+        <Stack direction="row" sx={{ alignItems: 'baseline', mb: 1 }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            {s.seq.shuttle ? `Designs on ${s.seq.shuttle}` : 'Designs'}
+            Designs{s.seq.shuttle ? ` on ${s.seq.shuttle}` : ''}
           </Typography>
-          <Button size="small" variant="outlined" disabled={!list().length} onClick={() => setWalk(0)}>
-            Walk through
-          </Button>
+          <Show when={s.projects().length}>
+            <Typography variant="caption">
+              {list().length} of {s.projects().length}
+            </Typography>
+          </Show>
         </Stack>
         <Show when={!s.seq.shuttle}>
           <Typography variant="body2">Choose a shuttle (or connect a board) to list its designs.</Typography>
@@ -65,59 +103,58 @@ export function DesignList() {
         <Show when={s.projectsError()}>
           <Alert severity="error">{s.projectsError()}</Alert>
         </Show>
-        <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap', gap: 1 }}>
-          <For each={[['tiny-vga', 'Tiny VGA'], ['gamepad', 'Gamepad'], ['all', 'All']] as [Filter, string][]}>
-            {([k, label]) => (
-              <Chip label={label} color={filter() === k ? 'primary' : 'default'} onClick={() => setFilter(k)} />
-            )}
-          </For>
-          <Select size="small" value={sort()} onChange={(e) => setSort(e.target.value as Sort)}>
-            <MenuItem value="title">by title</MenuItem>
-            <MenuItem value="address">by address</MenuItem>
-            <MenuItem value="video">recorded first</MenuItem>
-          </Select>
-        </Stack>
-        <TextField size="small" fullWidth placeholder="Search title, author, macro, address" value={query()} onChange={(_, v) => setQuery(v)} />
-        <Typography variant="caption" sx={{ display: 'block', my: 0.5 }}>
-          {list().length} of {s.projects().length} designs
-        </Typography>
-        <div>
-          <For each={list()}>
-            {(p, i) => {
-              const clip = () => clipUrls(s.seq.shuttle, p.macro);
-              return (
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', py: 0.5, borderBottom: '1px solid #eee' }}>
-                  <Show when={clip()} fallback={<div style={{ width: '80px', height: '60px', background: '#222', color: '#888', 'font-size': '10px', display: 'flex', 'align-items': 'center', 'justify-content': 'center' }}>no video</div>}>
-                    <img src={clip()!.poster} width={80} height={60} loading="lazy" alt="" style={{ background: '#000', 'object-fit': 'cover', cursor: 'pointer' }} onClick={() => setWalk(i())} />
+        <Show when={s.seq.shuttle}>
+          <TextField size="small" fullWidth placeholder="Search title, author, macro, address" value={query()} onChange={(_, v) => setQuery(v)} />
+          <Stack direction="row" spacing={0.5} sx={{ mt: 1, alignItems: 'center' }}>
+            <For each={FILTERS}>
+              {([k, label]) => <Chip size="small" label={label} color={filter() === k ? 'primary' : 'default'} onClick={() => setFilter(k)} />}
+            </For>
+            <span style={{ 'flex-grow': 1 }} />
+            <Select size="small" variant="standard" value={sort()} onChange={(e) => setSort(e.target.value as Sort)} sx={{ fontSize: '13px' }}>
+              <MenuItem value="title">A–Z</MenuItem>
+              <MenuItem value="address">by address</MenuItem>
+              <MenuItem value="video">recorded first</MenuItem>
+            </Select>
+          </Stack>
+          <Button size="small" fullWidth variant="outlined" sx={{ mt: 1 }} disabled={!list().length} onClick={() => setReview(0)}>
+            Review these {list().length} one at a time
+          </Button>
+        </Show>
+      </Box>
+      <Box data-scroll="designs" sx={{ overflowY: 'auto', flex: { md: 1 }, minHeight: 0, maxHeight: { xs: '70vh', md: 'none' }, px: 2 }}>
+        <For each={list()}>
+          {(p, i) => (
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', py: 0.5, borderBottom: '1px solid #eee' }}>
+              <Thumb project={p} onClick={() => setReview(i())} />
+              <div style={{ 'flex-grow': 1, 'min-width': 0 }}>
+                <Typography variant="body2" noWrap>
+                  <Show when={inSeq().has(projectKey(p))}>
+                    <span title="in the sequence" style={{ color: '#544ead' }}>
+                      ✓{' '}
+                    </span>
                   </Show>
-                  <div style={{ 'flex-grow': 1, 'min-width': 0 }}>
-                    <Typography variant="body2" noWrap>
-                      <Show when={inSeq().has(projectKey(p))}>
-                        <span title="in the sequence" style={{ color: '#544ead' }}>✓ </span>
-                      </Show>
-                      <b>{p.title}</b>
-                    </Typography>
-                    <Typography variant="caption" noWrap component="div">
-                      {projectKey(p)} · {p.author} · {p.clock_hz ? `${(p.clock_hz / 1e6).toFixed(3)} MHz` : 'clock not set'}
-                      {p.danger_level && p.danger_level !== 'safe' ? ` · not safe (${p.danger_level})` : ''}
-                    </Typography>
-                  </div>
-                  <Button size="small" disabled={p.danger_level !== undefined && p.danger_level !== 'safe'} onClick={() => s.addProject(p)}>
-                    Add
-                  </Button>
-                </Stack>
-              );
-            }}
-          </For>
-        </div>
-      </CardContent>
-      <WalkThrough list={list()} index={walk()} setIndex={setWalk} inSeq={inSeq()} />
+                  <b>{p.title}</b>
+                </Typography>
+                <Typography variant="caption" noWrap component="div">
+                  {projectKey(p)} · {p.author} · {p.clock_hz ? `${(p.clock_hz / 1e6).toFixed(3)} MHz` : 'clock not set'}
+                  {p.danger_level && p.danger_level !== 'safe' ? ` · not safe (${p.danger_level})` : ''}
+                </Typography>
+              </div>
+              <Button size="small" sx={{ flexShrink: 0 }} disabled={p.danger_level !== undefined && p.danger_level !== 'safe'} onClick={() => s.addProject(p)}>
+                Add
+              </Button>
+            </Stack>
+          )}
+        </For>
+      </Box>
+      <Review list={list()} index={review()} setIndex={setReview} inSeq={inSeq()} />
     </Card>
   );
 }
 
-function WalkThrough(props: { list: Project[]; index: number | null; setIndex: (i: number | null) => void; inSeq: Set<string> }) {
+function Review(props: { list: Project[]; index: number | null; setIndex: (i: number | null) => void; inSeq: Set<string> }) {
   const p = () => (props.index === null ? undefined : props.list[props.index]);
+  const close = () => props.setIndex(null);
   const next = () => {
     const i = props.index ?? 0;
     props.setIndex(i + 1 < props.list.length ? i + 1 : null);
@@ -126,28 +163,35 @@ function WalkThrough(props: { list: Project[]; index: number | null; setIndex: (
     const proj = p();
     const b = s.board();
     if (!proj || !b) return;
-    void s.job('showing on the board', (r) =>
-      showOne(r, b, s.seq.shuttle, { address: proj.address, subtile: proj.subtile, duration_ms: 15000, clock_hz: proj.clock_hz || VGA_CLOCK_HZ, ui_in: 0, steps: [] }),
-    ).then((errs) => {
-      if (errs?.length) s.say(errs.join('; '), 'error');
-      else if (errs) s.setRamRunning(true);
-    });
+    void s
+      .job('showing on the board', (r) =>
+        showOne(r, b, s.seq.shuttle, { address: proj.address, subtile: proj.subtile, duration_ms: 15000, clock_hz: proj.clock_hz || VGA_CLOCK_HZ, ui_in: 0, steps: [] }),
+      )
+      .then((errs) => {
+        if (errs?.length) s.say(errs.join('; '), 'error');
+        else if (errs) s.setRamRunning(true);
+      });
   };
   return (
-    <Dialog open={props.index !== null} onClose={() => props.setIndex(null)} maxWidth="md" fullWidth>
+    <Dialog open={props.index !== null} onClose={close} maxWidth="md" fullWidth>
       <Show when={p()}>
         {(proj) => (
           <>
             <DialogTitle>
-              {proj().title} <span style={{ opacity: 0.6, 'font-size': '0.8em' }}>({(props.index ?? 0) + 1} of {props.list.length})</span>
+              {proj().title}{' '}
+              <span style={{ opacity: 0.6, 'font-size': '0.8em' }}>
+                ({(props.index ?? 0) + 1} of {props.list.length})
+              </span>
             </DialogTitle>
             <DialogContent>
               <Typography variant="body2" gutterBottom>
                 {proj().author} · address {projectKey(proj())} · {proj().macro}
+                <Show when={props.inSeq.has(projectKey(proj()))}> · already in the sequence</Show>
               </Typography>
               <Clip shuttle={s.seq.shuttle} macro={proj().macro} />
             </DialogContent>
             <DialogActions>
+              <Button onClick={close}>Close</Button>
               <Button onClick={() => props.setIndex(Math.max(0, (props.index ?? 0) - 1))} disabled={!props.index}>
                 Back
               </Button>
@@ -164,7 +208,7 @@ function WalkThrough(props: { list: Project[]; index: number | null; setIndex: (
                   next();
                 }}
               >
-                {props.inSeq.has(projectKey(proj())) ? 'Include again' : 'Include'}
+                Add to sequence
               </Button>
             </DialogActions>
           </>
