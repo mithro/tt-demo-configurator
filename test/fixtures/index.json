@@ -1,0 +1,7 @@
+{"projects": [
+  {"macro": "tt_um_RoyTr16", "address": 260, "danger_level": "safe"},
+  {"macro": "tt_um_10_vga_crossyroad", "address": 907},
+  {"macro": "tt_um_hot", "address": 5, "danger_level": "high"},
+  {"macro": "tt_um_sub", "address": 10, "subtile_addr": 1, "danger_level": "safe"},
+  {"macro": "tt_um_group", "address": 10, "type": "group"}
+]}
