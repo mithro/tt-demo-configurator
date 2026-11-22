@@ -13,50 +13,66 @@ const readyMade = Object.entries(READY).map(([p, text]) => ({ shuttle: p.split('
 
 const CLOCKS = [0, 10_000, 1_000_000, 10_000_000, 25_000_000, 25_175_000, 25_200_000, 31_500_000, 40_000_000, 50_000_000, 50_350_000];
 
-export function Bits(props: { value: number; onChange: (v: number) => void; entry: Entry }) {
-  const p = () => s.projectOf(props.entry);
+/** Short label for input pin n: the project's own name, or "ui[n]". */
+function pinLabel(entry: Entry, n: number) {
+  return uiName(s.projectOf(entry), n);
+}
+
+/**
+ * The 8 ui_in inputs as a row of equal cells, ui[0] on the left, each showing the pin's name
+ * and its 0/1 value; click a cell to flip it. Step rows use the same grid, so columns line up.
+ */
+export function Bits(props: { value: number; onChange: (v: number) => void; entry: Entry; dense?: boolean }) {
   return (
-    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-      <For each={[7, 6, 5, 4, 3, 2, 1, 0]}>
+    <div style={{ display: 'grid', 'grid-template-columns': 'repeat(8, minmax(0, 1fr))', gap: '3px', flex: 1, 'min-width': 0 }}>
+      <For each={[0, 1, 2, 3, 4, 5, 6, 7]}>
         {(n) => {
           const on = () => ((props.value >> n) & 1) === 1;
+          const name = () => pinLabel(props.entry, n);
           return (
             <button
-                type="button"
-                title={`ui[${n}]`}
-                onClick={() => props.onChange(props.value ^ (1 << n))}
-                style={{
-                  border: '1px solid #544ead',
-                  'border-radius': '4px',
-                  padding: '2px 6px',
-                  'font-size': '11px',
-                  cursor: 'pointer',
-                  background: on() ? '#544ead' : '#fff',
-                  color: on() ? '#fff' : '#544ead',
-                  'min-width': '3.2em',
-                }}
-              >
-                {uiName(p(), n)}={on() ? 1 : 0}
-              </button>
+              type="button"
+              title={`ui[${n}] ${name()}: ${on() ? 1 : 0} (click to flip)`}
+              onClick={() => props.onChange(props.value ^ (1 << n))}
+              style={{
+                border: `1px solid ${on() ? '#544ead' : '#cfcce8'}`,
+                'border-radius': '4px',
+                padding: props.dense ? '1px 3px' : '3px 4px',
+                cursor: 'pointer',
+                background: on() ? '#544ead' : '#fff',
+                color: on() ? '#fff' : '#333',
+                'min-width': 0,
+                'text-align': 'center',
+                'line-height': 1.2,
+                font: 'inherit',
+              }}
+            >
+              <Show when={!props.dense}>
+                <div style={{ 'font-size': '10px', opacity: 0.7, overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }}>{name()}</div>
+              </Show>
+              <div style={{ 'font-size': props.dense ? '11px' : '13px', 'font-weight': 600 }}>{on() ? 1 : 0}</div>
+            </button>
           );
         }}
       </For>
-    </Stack>
+    </div>
   );
 }
 
-function IntField(props: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number; width?: string }) {
+function IntField(props: { label: string; value: number; onChange: (v: number) => void; min?: number; helper?: string; step?: number; scale?: number }) {
+  const k = () => props.scale ?? 1;
   return (
     <TextField
       size="small"
       label={props.label}
       type="number"
-      value={props.value}
-      inputProps={{ min: props.min, max: props.max }}
-      sx={{ width: props.width ?? '9em' }}
+      value={props.value / k()}
+      helperText={props.helper}
+      inputProps={{ min: props.min, step: props.step }}
+      fullWidth
       onChange={(_, v) => {
-        const n = Number(v);
-        if (Number.isInteger(n)) props.onChange(n);
+        const n = Math.round(Number(v) * k());
+        if (v !== '' && Number.isInteger(n)) props.onChange(n);
       }}
     />
   );
@@ -66,39 +82,55 @@ function EntryEditor(props: { index: number }) {
   const e = () => s.seq.projects[props.index];
   const p = () => s.projectOf(e());
   const set = (change: Partial<Entry>) => s.updateEntry(props.index, change);
+  const mhz = (hz: number) => (hz ? `${+(hz / 1e6).toFixed(3)} MHz` : 'clock stopped');
   return (
     <Show when={e()}>
-      <Box sx={{ mt: 2 }}>
-        <Typography variant="subtitle1">
-          <b>{p()?.title ?? 'Unknown project'}</b> <span style={{ opacity: 0.6 }}>{p()?.macro}</span>
-        </Typography>
-        <Stack direction="row" spacing={1} sx={{ my: 1, flexWrap: 'wrap', gap: 1 }}>
-          <IntField label="address" value={e().address} min={0} onChange={(v) => set({ address: v })} width="7em" />
-          <IntField label="subtile" value={e().subtile} min={0} onChange={(v) => set({ subtile: v })} width="6em" />
-          <IntField label="duration (ms)" value={e().duration_ms} min={1} onChange={(v) => set({ duration_ms: v })} />
-          <IntField label="clock (Hz)" value={e().clock_hz} min={0} onChange={(v) => set({ clock_hz: v })} width="10em" />
-          <Select size="small" value="" displayEmpty onChange={(ev) => set({ clock_hz: Number(ev.target.value) })}>
-            <MenuItem value="">common clocks…</MenuItem>
-            <Show when={p()?.clock_hz}>
-              <MenuItem value={p()!.clock_hz}>project&apos;s own: {p()!.clock_hz} Hz</MenuItem>
-            </Show>
-            <For each={CLOCKS}>{(c) => <MenuItem value={c}>{c === 0 ? 'stopped (0)' : `${c / 1e6} MHz`}</MenuItem>}</For>
-          </Select>
-        </Stack>
-        <Typography variant="body2" sx={{ mb: 0.5 }}>
-          ui_in at start: <b>{e().ui_in}</b> (0b{e().ui_in.toString(2).padStart(8, '0')})
-        </Typography>
-        <Bits value={e().ui_in} entry={e()} onChange={(v) => set({ ui_in: v })} />
-        <Show when={s.board()}>
-          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+      <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #eee' }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <Typography variant="subtitle1" sx={{ flexGrow: 1, minWidth: 0 }} noWrap>
+            <b>{p()?.title ?? 'Unknown project'}</b> <span style={{ opacity: 0.6, 'font-size': '0.85em' }}>{p()?.macro}</span>
+          </Typography>
+          <Show when={s.board()}>
             <Button size="small" onClick={() => act.previewEntry(props.index, false)} disabled={s.busy() !== null}>
-              Show this one on the board
+              Show on board
             </Button>
             <Button size="small" onClick={() => act.previewEntry(props.index, true)} disabled={s.busy() !== null || !e().steps.length}>
-              Play its steps on the board
+              Play steps on board
             </Button>
-          </Stack>
-        </Show>
+          </Show>
+        </Stack>
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '5.5em 5em 7em minmax(9em, 14em)' }, gap: 1, mt: 1.5, alignItems: 'start' }}>
+          <IntField label="Address" value={e().address} min={0} onChange={(v) => set({ address: v })} />
+          <IntField label="Subtile" value={e().subtile} min={0} onChange={(v) => set({ subtile: v })} />
+          <IntField label="Show for (s)" value={e().duration_ms} scale={1000} step={0.5} min={0.001} onChange={(v) => set({ duration_ms: v })} />
+          <div>
+            <IntField label="Clock (Hz)" value={e().clock_hz} min={0} onChange={(v) => set({ clock_hz: v })} />
+            <Stack direction="row" sx={{ alignItems: 'center', px: 0.5 }}>
+              <Typography variant="caption" sx={{ flexGrow: 1, opacity: 0.7 }}>
+                {mhz(e().clock_hz)}
+              </Typography>
+              <Select size="small" variant="standard" disableUnderline value="" displayEmpty onChange={(ev) => set({ clock_hz: Number(ev.target.value) })} sx={{ fontSize: '12px' }}>
+                <MenuItem value="">presets</MenuItem>
+            <Show when={p()?.clock_hz}>
+              <MenuItem value={p()!.clock_hz}>project&apos;s own ({mhz(p()!.clock_hz)})</MenuItem>
+            </Show>
+                <For each={CLOCKS}>{(c) => <MenuItem value={c}>{c === 0 ? 'stopped (0)' : mhz(c)}</MenuItem>}</For>
+              </Select>
+            </Stack>
+          </div>
+        </Box>
+
+        <Stack direction="row" sx={{ alignItems: 'baseline', mt: 1.5, mb: 0.5 }}>
+          <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+            Inputs at start <span style={{ 'font-weight': 400, opacity: 0.7 }}>· click to flip</span>
+          </Typography>
+          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+            ui_in = {e().ui_in} (0b{e().ui_in.toString(2).padStart(8, '0')})
+          </Typography>
+        </Stack>
+        <Bits value={e().ui_in} entry={e()} onChange={(v) => set({ ui_in: v })} />
+
         <StepEditor index={props.index} />
       </Box>
     </Show>

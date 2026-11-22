@@ -2,7 +2,7 @@
 // Preview without a board: each design's recorded VGA clip, and a timeline that plays
 // the sequence through with each entry's duration.
 import { Box, Button, Card, CardContent, Stack, Typography } from '@suid/material';
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { clipUrls, videoInfo } from '~/lib/shuttleIndex';
 import { state as s } from './state';
 
@@ -21,11 +21,19 @@ export function recordingNote(shuttle: string, macro: string | undefined): strin
   return v ? VERDICTS[v] : undefined;
 }
 
-export function Clip(props: { shuttle: string; macro: string | undefined; note?: string }) {
+export function Clip(props: { shuttle: string; macro: string | undefined; note?: string; paused?: boolean }) {
   const urls = () => (props.macro ? clipUrls(props.shuttle, props.macro) : null);
   const [state, setState] = createSignal<'loading' | 'playing' | 'paused' | 'error'>('loading');
   const [progress, setProgress] = createSignal(0);
   const [length, setLength] = createSignal(0);
+  let video: HTMLVideoElement | undefined;
+  // The sequence's pause freezes the clip too; resuming plays it again.
+  createEffect(() => {
+    const hold = props.paused;
+    if (!video) return;
+    if (hold) video.pause();
+    else if (video.paused && untrack(state) !== 'error') void video.play().catch(() => undefined);
+  });
   const label = () =>
     ({ loading: 'loading the recording…', playing: `playing · ${length() ? `${Math.floor(progress() * length())} of ${Math.round(length())} s, looping` : ''}`, paused: 'paused (click to play)', error: "couldn't load the recording" })[state()];
   return (
@@ -41,7 +49,8 @@ export function Clip(props: { shuttle: string; macro: string | undefined; note?:
       {(u) => (
         <div>
           <video
-            autoplay
+            ref={(el) => (video = el)}
+            autoplay={!props.paused}
             muted
             loop
             playsinline
@@ -78,7 +87,8 @@ export function Clip(props: { shuttle: string; macro: string | undefined; note?:
 }
 
 export function Preview() {
-  const [playing, setPlaying] = createSignal(false);
+  const [mode, setMode] = createSignal<'stopped' | 'playing' | 'paused'>('stopped');
+  const playing = () => mode() === 'playing';
   const [elapsed, setElapsed] = createSignal(0);
   const total = createMemo(() => s.seq.projects.reduce<number>((n, e) => n + Math.max(0, e.duration_ms || 0), 0));
 
@@ -89,11 +99,14 @@ export function Preview() {
     return e ? s.projectOf(e)?.macro : undefined;
   };
 
+  // bumped by a jump, so a running timer restarts from the new position
+  const [epoch, setEpoch] = createSignal(0);
   let timer: ReturnType<typeof setInterval> | undefined;
   createEffect(() => {
+    epoch();
     clearInterval(timer);
     if (!playing() || !total()) return;
-    const start = Date.now() - elapsed();
+    const start = Date.now() - untrack(elapsed);
     timer = setInterval(() => {
       const t = (Date.now() - start) % total();
       setElapsed(t);
@@ -112,6 +125,7 @@ export function Preview() {
   const jump = (i: number) => {
     s.setSelected(i);
     setElapsed(s.seq.projects.slice(0, i).reduce<number>((n, e) => n + e.duration_ms, 0));
+    setEpoch(epoch() + 1);
   };
 
   return (
@@ -121,14 +135,27 @@ export function Preview() {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Preview
           </Typography>
-          <Button size="small" variant={playing() ? 'contained' : 'outlined'} disabled={!total()} onClick={() => setPlaying(!playing())}>
-            {playing() ? 'Pause sequence' : 'Play sequence'}
+          <Show when={mode() !== 'stopped'}>
+            <Button
+              size="small"
+              sx={{ mr: 1 }}
+              onClick={() => {
+                setMode('stopped');
+                setElapsed(0);
+              }}
+            >
+              Stop
+            </Button>
+          </Show>
+          <Button size="small" variant={playing() ? 'contained' : 'outlined'} disabled={!total()} onClick={() => setMode(playing() ? 'paused' : 'playing')}>
+            {{ stopped: 'Play sequence', playing: 'Pause', paused: 'Resume' }[mode()]}
           </Button>
         </Stack>
         <Show when={s.seq.projects.length} fallback={<Typography variant="body2">The sequence is empty: its designs' recorded videos play here.</Typography>}>
         <Clip
           shuttle={s.seq.shuttle}
           macro={macro()}
+          paused={mode() === 'paused'}
           note={entry()?.steps.length ? 'Recorded with the design’s own test inputs, not this entry’s steps.' : undefined}
         />
         <Typography variant="body2" sx={{ mt: 1 }}>
@@ -158,11 +185,14 @@ export function Preview() {
                 </div>
               )}
             </For>
-            <Show when={playing()}>
-              <div style={{ position: 'absolute', top: 0, bottom: 0, width: '2px', background: '#8afbfd', left: `${(elapsed() / total()) * 100}%` }} />
+            <Show when={mode() !== 'stopped'}>
+              <div style={{ position: 'absolute', top: 0, bottom: 0, width: '2px', background: playing() ? '#8afbfd' : '#ff9800', left: `${(elapsed() / total()) * 100}%` }} />
             </Show>
           </div>
           <Typography variant="caption">
+            <Show when={mode() !== 'stopped'}>
+              {playing() ? 'Playing' : 'Paused'} at {(elapsed() / 1000).toFixed(1)} s ·{' '}
+            </Show>
             One loop: {(total() / 1000).toFixed(1)} s, {s.seq.projects.length} designs
           </Typography>
         </Show>
