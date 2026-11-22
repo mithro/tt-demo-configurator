@@ -4,7 +4,7 @@ A web page for turning a [Tiny Tapeout](https://tinytapeout.com) dev board into 
 with a screen plugged into its VGA Pmod and no computer attached, the board cycles through
 the chip's VGA designs and plays the games among them with scripted button presses.
 
-**Use it:** https://mithro.github.io/tt-demo-configurator/ (Chrome or Edge on a desktop: it
+**Use it:** https://mith.ro/tt-demo-configurator/ (Chrome or Edge on a desktop: it
 talks to the board over WebSerial).
 
 - Pick designs for a chip, filtered by Pmod (Tiny VGA by default), with each design's
