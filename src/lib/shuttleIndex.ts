@@ -43,11 +43,12 @@ export function toProject(p: Record<string, unknown>): Project {
   };
 }
 
+/** The shuttles, newest first. The index has no dates but lists shuttles oldest first. */
 export async function loadShuttles(): Promise<ShuttleInfo[]> {
   const r = await fetch(`${INDEX}/`);
   if (!r.ok) throw new Error(`index.tinytapeout.com: HTTP ${r.status}`);
   const data: { shuttles: { id: string; name: string }[] } = await r.json();
-  return data.shuttles.map((s) => ({ id: s.id, name: s.name }));
+  return data.shuttles.map((s) => ({ id: s.id, name: s.name })).reverse();
 }
 
 export async function loadShuttle(id: string): Promise<Project[]> {
