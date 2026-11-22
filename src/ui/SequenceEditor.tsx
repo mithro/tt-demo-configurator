@@ -105,6 +105,34 @@ function EntryEditor(props: { index: number }) {
   );
 }
 
+function EmptySequence() {
+  const ordered = () => [...readyMade].sort((a, b) => Number(b.shuttle === s.seq.shuttle) - Number(a.shuttle === s.seq.shuttle));
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="body1" gutterBottom>
+        Start from a ready-made sequence, open a file, or add designs from the list on the left.
+      </Typography>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 1, mt: 1 }}>
+        <For each={ordered()}>
+          {(r) => {
+            const n = () => (JSON.parse(r.text).projects as unknown[]).length;
+            return (
+              <Button
+                variant={r.shuttle === s.seq.shuttle ? 'contained' : 'outlined'}
+                onClick={() => act.openText(r.text, `the ready-made ${r.shuttle} sequence`)}
+                sx={{ flexDirection: 'column', alignItems: 'flex-start', textTransform: 'none', p: 1.5 }}
+              >
+                <b>{r.shuttle}</b>
+                <span style={{ 'font-size': '12px', opacity: 0.8 }}>{n()} designs · Shenzhen 2026</span>
+              </Button>
+            );
+          }}
+        </For>
+      </Box>
+    </Box>
+  );
+}
+
 export function SequenceEditor() {
   onMount(() => void s.ensureShuttles());
   let fileInput!: HTMLInputElement;
@@ -131,7 +159,7 @@ export function SequenceEditor() {
             <For each={shuttleOptions()}>{(id) => <MenuItem value={id}>{id}</MenuItem>}</For>
           </Select>
           <span style={{ 'flex-grow': 1 }} />
-          <Select size="small" value="" displayEmpty onChange={(e) => e.target.value && act.openText(e.target.value, 'the ready-made sequence')}>
+          <Select size="small" value="" displayEmpty onChange={(e) => e.target.value && act.openText(e.target.value, 'a ready-made sequence')}>
             <MenuItem value="">ready-made…</MenuItem>
             <For each={readyMade}>{(r) => <MenuItem value={r.text}>{r.shuttle} (Shenzhen 2026)</MenuItem>}</For>
           </Select>
@@ -142,7 +170,15 @@ export function SequenceEditor() {
           <Button size="small" disabled={!s.seq.shuttle || !s.seq.projects.length} onClick={() => act.download(s.seq.shuttle ? `${s.seq.shuttle}.demo.json` : 'demo.json', s.text())}>
             Download
           </Button>
-          <Button size="small" color="error" disabled={!s.seq.projects.length} onClick={() => s.loadFile({ version: 1, shuttle: s.seq.shuttle, projects: [] })}>
+          <Button
+            size="small"
+            color="error"
+            disabled={!s.seq.projects.length}
+            onClick={() => {
+              s.loadFile({ version: 1, shuttle: s.seq.shuttle, projects: [] });
+              s.say('cleared the sequence');
+            }}
+          >
             Clear
           </Button>
         </Stack>
@@ -175,8 +211,8 @@ export function SequenceEditor() {
           </Alert>
         </Show>
 
-        <Show when={s.seq.projects.length} fallback={<Typography sx={{ mt: 2 }} variant="body2">Add designs from the list, open a file, or pick a ready-made sequence.</Typography>}>
-          <div style={{ 'margin-top': '8px', 'max-height': '40vh', overflow: 'auto' }}>
+        <Show when={s.seq.projects.length} fallback={<EmptySequence />}>
+          <div style={{ 'margin-top': '8px' }}>
             <For each={s.seq.projects}>
               {(e, i) => (
                 <Stack

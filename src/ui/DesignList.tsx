@@ -53,12 +53,15 @@ export function DesignList() {
       <CardContent>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            Designs on {s.seq.shuttle || '…'}
+            {s.seq.shuttle ? `Designs on ${s.seq.shuttle}` : 'Designs'}
           </Typography>
           <Button size="small" variant="outlined" disabled={!list().length} onClick={() => setWalk(0)}>
             Walk through
           </Button>
         </Stack>
+        <Show when={!s.seq.shuttle}>
+          <Typography variant="body2">Choose a shuttle (or connect a board) to list its designs.</Typography>
+        </Show>
         <Show when={s.projectsError()}>
           <Alert severity="error">{s.projectsError()}</Alert>
         </Show>
@@ -78,7 +81,7 @@ export function DesignList() {
         <Typography variant="caption" sx={{ display: 'block', my: 0.5 }}>
           {list().length} of {s.projects().length} designs
         </Typography>
-        <div style={{ 'max-height': '60vh', overflow: 'auto' }}>
+        <div>
           <For each={list()}>
             {(p, i) => {
               const clip = () => clipUrls(s.seq.shuttle, p.macro);
@@ -89,6 +92,9 @@ export function DesignList() {
                   </Show>
                   <div style={{ 'flex-grow': 1, 'min-width': 0 }}>
                     <Typography variant="body2" noWrap>
+                      <Show when={inSeq().has(projectKey(p))}>
+                        <span title="in the sequence" style={{ color: '#544ead' }}>✓ </span>
+                      </Show>
                       <b>{p.title}</b>
                     </Typography>
                     <Typography variant="caption" noWrap component="div">
@@ -97,7 +103,7 @@ export function DesignList() {
                     </Typography>
                   </div>
                   <Button size="small" disabled={p.danger_level !== undefined && p.danger_level !== 'safe'} onClick={() => s.addProject(p)}>
-                    {inSeq().has(projectKey(p)) ? 'Add again' : 'Add'}
+                    Add
                   </Button>
                 </Stack>
               );

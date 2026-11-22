@@ -47,12 +47,9 @@ export function BoardPanel() {
           fallback={
             <Stack spacing={1}>
               <Typography variant="body2">
-                Plug in a Tiny Tapeout dev board (RP2350) and connect. Close the commander app first: only one page can
-                use the board at a time.
+                Not connected. Plug in a Tiny Tapeout dev board (RP2350) and press <b>Connect</b> at the top to test a
+                sequence on it or install it. Close the commander app first: only one page can use the board.
               </Typography>
-              <Button variant="contained" onClick={() => s.connect()} disabled={busy()}>
-                Connect to a board
-              </Button>
               <Show when={act.savedBackup()}>
                 <Alert severity="info">
                   A backup of /demo.json and config.ini from {act.savedBackup()!.saved} is kept in this browser: connect
@@ -86,7 +83,11 @@ export function BoardPanel() {
                   {info().demoRunning || s.ramRunning() ? ', running now' : ''}
                   {s.ramRunning() ? ' (from RAM)' : ''}
                 </Row>
+                <Row label="DIP switches">
+                  {info().dipOn === null ? 'unknown' : info().dipOn!.length ? `ON: ${info().dipOn!.map((i) => `ui_in[${i}]`).join(', ')}` : 'all off (correct)'}
+                </Row>
                 <For each={blocked()}>{(m) => <Alert severity="error">{m}</Alert>}</For>
+                <For each={act.setupWarnings()}>{(m) => <Alert severity="warning">{m}</Alert>}</For>
                 <Show when={info().demoErrors.length}>
                   <Alert severity="error">
                     The board&apos;s demo failed at boot:
@@ -182,10 +183,6 @@ export function BoardPanel() {
                     </Show>
                   </Stack>
                 </Box>
-                <Divider />
-                <Button size="small" onClick={() => s.disconnect()}>
-                  Disconnect
-                </Button>
               </Stack>
             )}
           </Show>

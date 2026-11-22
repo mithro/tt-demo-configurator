@@ -23,7 +23,7 @@ const stock31 = stockMainFor('3.1.1')!;
 function board(over: Partial<BoardInfo>): BoardInfo {
   return {
     machine: 'RP2350', sdk: '3.1.1', rp2350: true, shuttle: 'ttsky25a', rom: null, isFpga: false, projects: 237,
-    firmware: 'stock', demoSetting: false, demoRunning: false, demoErrors: [], main: stock31, mainStock: null,
+    firmware: 'stock', demoSetting: false, mode: 'ASIC_RP_CONTROL', dipOn: [], demoRunning: false, demoErrors: [], main: stock31, mainStock: null,
     configIni: stockIni, demoJson: null, demoPy: null, vgaCycle: null, errors: [], ...over,
   };
 }

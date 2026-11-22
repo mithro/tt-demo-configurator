@@ -46,6 +46,37 @@ def _tt_demo_detect():
             r['projects'] = len(tt.shuttle)
         except Exception as e:
             r['errors'].append('no project count: %s' % e)
+    # The ui_in DIP switches: each one that is on holds its input high and beats the RP2350,
+    # so the demo's inputs never reach the design. The SDK's own test: an input that reads
+    # high is a switch that is on (and it then leaves that pin undriven). Pins the RP2350 is
+    # driving are released for a moment to read them, then driven again, unless the switch
+    # turns out to be on, in which case they stay inputs as the SDK would leave them.
+    r['mode'] = None
+    r['dip_on'] = None
+    if tt is not None:
+        try:
+            r['mode'] = tt.mode_str
+        except Exception as e:
+            r['errors'].append('no mode: %s' % e)
+        try:
+            from ttboard.pins.upython import Pin
+            on = []
+            for i in range(8):
+                p = getattr(tt.pins, 'ui_in%d' % i)
+                if p.is_input:
+                    high = bool(p())
+                else:
+                    was = p()
+                    p.mode = Pin.IN
+                    high = bool(p())
+                    if not high:
+                        p.mode = Pin.OUT
+                        p(was)
+                if high:
+                    on.append(i)
+            r['dip_on'] = on
+        except Exception as e:
+            r['errors'].append('could not read the DIP switches: %s' % e)
     try:
         import ttboard.demo
         r['firmware_demo'] = True

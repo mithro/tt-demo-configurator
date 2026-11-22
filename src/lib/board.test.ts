@@ -41,6 +41,19 @@ describe('detect', () => {
     expect(info.rom).toEqual({ shuttle: 'ttsky25a', repo: 'TinyTapeout/x', commit: 'abcd1234' });
     expect(info.demoJson).toBeNull();
   });
+  it('reads the ui_in DIP switches, and drives the pins again when they are off', async () => {
+    await repl.check('from ttboard.demoboard import DemoBoard\ntt = DemoBoard.get()\n');
+    expect((await detect(repl)).dipOn).toEqual([]);
+    expect((await repl.check('print(tt.pins.ui_in0.is_input)\n')).trim()).toBe('False');
+    await repl.check('tt.pins.ui_in0.switch = 1\ntt.pins.ui_in5.switch = 1\n');
+    const info = await detect(repl);
+    expect(info.dipOn).toEqual([0, 5]);
+    expect(info.mode).toBe('ASIC_RP_CONTROL');
+    // a pin whose switch is on is left undriven, as the SDK leaves it
+    expect((await repl.check('print(tt.pins.ui_in0.is_input, tt.pins.ui_in1.is_input)\n')).trim()).toBe('True False');
+    await repl.check('tt.pins.ui_in0.switch = 0\ntt.pins.ui_in5.switch = 0\n');
+    expect((await detect(repl)).dipOn).toEqual([]);
+  });
   it('sees the helper, demo = yes and /demo.json', async () => {
     await writeFile(repl, '/main.py', `${HELPER_MARKER}\nexec(open('/main_stock.py').read())\n`);
     await writeFile(repl, '/demo.py', '# demo\n');

@@ -20,6 +20,10 @@ export interface BoardInfo {
   firmware: FirmwareType;
   /** config.ini [DEFAULT] demo = yes, as the firmware's parser reads it. */
   demoSetting: boolean;
+  /** The board's input mode, e.g. "ASIC_RP_CONTROL"; null if unknown. */
+  mode: string | null;
+  /** ui_in bits whose DIP switch is on (should be empty); null if they couldn't be read. */
+  dipOn: number[] | null;
   demoRunning: boolean;
   demoErrors: string[];
   main: string | null;
@@ -52,6 +56,8 @@ export function parseDetect(out: string): BoardInfo {
     projects: r.projects,
     firmware,
     demoSetting: !!r.demo_setting,
+    mode: r.mode ?? null,
+    dipOn: r.dip_on ?? null,
     demoRunning: !!r.demo_running,
     demoErrors: r.demo_errors ?? [],
     main,

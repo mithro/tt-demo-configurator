@@ -10,7 +10,8 @@ export function stubTtboard(
 import sys, types
 sys.implementation._machine = 'Raspberry Pi Pico2 with RP2350'
 for name in ('ttboard', 'ttboard.demoboard', 'ttboard.config', 'ttboard.config.parser', 'ttboard.util',
-             'ttboard.util.platform', 'ttboard.util.time', 'ttboard.log', 'ttboard.pins', 'ttboard.pins.desktop_pin', 'ttboard.mode'):
+             'ttboard.util.platform', 'ttboard.util.time', 'ttboard.log', 'ttboard.pins', 'ttboard.pins.desktop_pin', 'ttboard.mode',
+             'ttboard.pins.upython'):
     sys.modules[name] = types.ModuleType(name)
 sys.modules['ttboard.util.platform'].IsRP2 = False
 sys.modules['ttboard.util.time'].sleep_ms = lambda ms: None
@@ -46,6 +47,19 @@ class _Shuttle:
     def __len__(self): return ${projects}
 class _Port:
     value = 0
+class Pin:
+    IN, OUT = 0, 1
+sys.modules['ttboard.pins.upython'].Pin = Pin
+class _UiPin:
+    # a ui_in pin: driven by the RP2350 (mode OUT) unless its DIP switch is on
+    def __init__(self): self.switch, self.mode, self.out = 0, Pin.OUT, 0
+    is_input = property(lambda self: self.mode == Pin.IN)
+    def __call__(self, v=None):
+        if v is not None: self.out = v
+        return self.switch if self.is_input else self.out
+class _Pins:
+    def __init__(self):
+        for i in range(8): setattr(self, 'ui_in%d' % i, _UiPin())
 class _ROM:
     contents = {'shuttle': ${JSON.stringify(shuttle)}, 'repo': 'TinyTapeout/x', 'commit': 'abcd1234'}
 class _TT:
@@ -53,6 +67,8 @@ class _TT:
     shuttle = _Shuttle()
     chip_ROM = _ROM()
     ui_in = _Port()
+    pins = _Pins()
+    mode_str = 'ASIC_RP_CONTROL'
     clock = None
     def clock_project_PWM(self, hz): self.clock = hz
     def clock_project_stop(self): self.clock = 0

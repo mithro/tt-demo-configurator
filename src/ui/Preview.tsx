@@ -88,6 +88,7 @@ export function Preview() {
             {playing() ? 'Pause sequence' : 'Play sequence'}
           </Button>
         </Stack>
+        <Show when={s.seq.projects.length} fallback={<Typography variant="body2">The sequence is empty: its designs' recorded videos play here.</Typography>}>
         <Clip
           shuttle={s.seq.shuttle}
           macro={macro()}
@@ -96,6 +97,7 @@ export function Preview() {
         <Typography variant="body2" sx={{ mt: 1 }}>
           {entry() ? `${s.projectOf(entry()!)?.title ?? `address ${entry()!.address}`} — ${(entry()!.duration_ms / 1000).toFixed(1)} s` : 'Select an entry to preview it.'}
         </Typography>
+        </Show>
         <Show when={total()}>
           <div style={{ display: 'flex', height: '28px', 'margin-top': '8px', 'border-radius': '4px', overflow: 'hidden', position: 'relative' }}>
             <For each={s.seq.projects}>

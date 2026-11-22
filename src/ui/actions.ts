@@ -30,6 +30,22 @@ export function download(name: string, text: string, type = 'application/json') 
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Board set-up problems that don't stop a write but would spoil the demo. */
+export function setupWarnings(): string[] {
+  const b = s.board();
+  if (!b) return [];
+  const w: string[] = [];
+  if (b.dipOn?.length) {
+    w.push(
+      `DIP switch${b.dipOn.length > 1 ? 'es' : ''} ${b.dipOn.map((i) => `ui_in[${i}]`).join(', ')} ${b.dipOn.length > 1 ? 'are' : 'is'} ON: ` +
+        'turn all 8 ui_in DIP switches OFF, or the demo’s inputs won’t reach the designs (then reconnect to check again)',
+    );
+  }
+  if (b.dipOn === null) w.push("couldn't read the ui_in DIP switches: check by hand that all 8 are OFF");
+  if (b.mode && b.mode !== 'ASIC_RP_CONTROL') w.push(`the board is in ${b.mode} mode: the demo needs ASIC_RP_CONTROL to drive ui_in (set mode in config.ini)`);
+  return w;
+}
+
 /** Why the current sequence can't go onto the connected board, if it can't. */
 export function blockers(): string[] {
   const b = s.board();
@@ -83,6 +99,7 @@ function plan(fn: () => FileOp[]): FileOp[] | null {
 export async function testInRam() {
   const why = blockers();
   if (why.length) return s.say(`can't test: ${why.join('; ')}`, 'error');
+  for (const w of setupWarnings()) s.say(w, 'error');
   const b = s.board()!;
   const errs = await s.job('starting the sequence from RAM', (r) => runFromRam(r, b, current()));
   if (errs === undefined) return;
@@ -118,7 +135,7 @@ export async function makePermanent() {
   const b = s.board()!;
   const ops = plan(() => planMakePermanent(b, formatDemo(current())));
   if (!ops) return;
-  if (await apply('Make permanent', ops)) s.say('the board will run this demo every time it powers up (reboot to start it now)', 'ok');
+  if (await apply('Make permanent', ops, setupWarnings())) s.say('the board will run this demo every time it powers up (reboot to start it now)', 'ok');
 }
 
 export async function installHelper() {

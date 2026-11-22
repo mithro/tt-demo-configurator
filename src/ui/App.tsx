@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { AppBar, Box, CssBaseline, LinearProgress, ThemeProvider, Toolbar, Typography } from '@suid/material';
+//
+// Layout: the header carries the board's status and Connect. Below, three columns that
+// each scroll on their own: the design library (where you pick from), the sequence
+// (what you are building), and the preview with the board's controls.
+import { AppBar, Box, Button, Chip, CssBaseline, LinearProgress, ThemeProvider, Toolbar, Typography } from '@suid/material';
 import { For, Show } from 'solid-js';
 import { BoardPanel } from './BoardPanel';
 import { ConfirmOpsDialog } from './ConfirmOps';
@@ -12,7 +16,7 @@ import { theme } from './theme';
 function Log() {
   const colour = { info: '#333', error: '#b00020', ok: '#1b5e20' };
   return (
-    <Box sx={{ fontFamily: 'monospace', fontSize: '12px', maxHeight: '22vh', overflow: 'auto', background: '#fafafa', p: 1, border: '1px solid #eee' }}>
+    <Box sx={{ fontFamily: 'monospace', fontSize: '12px', maxHeight: '30vh', overflow: 'auto', background: '#fafafa', p: 1, border: '1px solid #eee' }}>
       <For each={[...s.log()].reverse()} fallback={<span style={{ opacity: 0.6 }}>Messages appear here.</span>}>
         {(l) => (
           <div style={{ color: colour[l.kind] }}>
@@ -24,31 +28,96 @@ function Log() {
   );
 }
 
+function BoardStatus() {
+  const label = () => {
+    const b = s.board();
+    if (!s.repl()) return 'No board connected';
+    if (!b) return 'Reading the board…';
+    const chip = b.isFpga ? 'FPGA board' : (b.shuttle ?? 'unknown chip');
+    const fw = { custom: 'demo firmware', helper: 'stock + helper', stock: 'stock', handmade: 'hand-made demo' }[b.firmware];
+    return `${chip} · SDK ${b.sdk ?? '?'} · ${fw}${b.demoRunning || s.ramRunning() ? ' · demo running' : ''}`;
+  };
+  return (
+    <>
+      <Chip
+        label={label()}
+        sx={{ background: s.repl() ? '#8afbfd' : 'rgba(255,255,255,0.15)', color: s.repl() ? '#1c1b2e' : '#fff', mr: 1, maxWidth: '50vw', display: { xs: s.repl() ? 'flex' : 'none', sm: 'flex' } }}
+      />
+      <Show
+        when={s.repl()}
+        fallback={
+          <Button variant="contained" color="secondary" size="small" onClick={() => s.connect()} disabled={s.busy() !== null}>
+            Connect
+          </Button>
+        }
+      >
+        <Button size="small" sx={{ color: '#fff' }} onClick={() => s.disconnect()}>
+          Disconnect
+        </Button>
+      </Show>
+    </>
+  );
+}
+
+const HEADER = 48;
+
+function Column(props: { children: any; label: string }) {
+  return (
+    <Box
+      component="section"
+      aria-label={props.label}
+      sx={{
+        display: 'grid',
+        gap: 2,
+        alignContent: 'start',
+        overflowY: { md: 'auto' },
+        height: { md: `calc(100vh - ${HEADER}px)` },
+        p: 2,
+        pb: 4,
+      }}
+    >
+      {props.children}
+    </Box>
+  );
+}
+
 export function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AppBar position="sticky">
-        <Toolbar variant="dense">
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            Tiny Tapeout Demo Configurator
+      <AppBar position="sticky" elevation={1}>
+        <Toolbar variant="dense" sx={{ minHeight: `${HEADER}px` }}>
+          <Typography variant="h6" sx={{ flexGrow: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', mr: 1 }}>
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+              Tiny Tapeout{' '}
+            </Box>
+            Demo Configurator
           </Typography>
-          <Typography variant="caption">{__COMMIT_HASH__}</Typography>
+          <BoardStatus />
+          <Typography variant="caption" sx={{ ml: 2, opacity: 0.7, display: { xs: 'none', md: 'block' } }}>
+            {__COMMIT_HASH__}
+          </Typography>
         </Toolbar>
         <Show when={s.busy()}>
-          <LinearProgress color="secondary" />
+          <LinearProgress color="secondary" sx={{ position: 'absolute', bottom: 0, left: 0, right: 0 }} />
         </Show>
       </AppBar>
       <Box
         sx={{
-          p: 2,
-          display: 'grid',
-          gap: 2,
-          gridTemplateColumns: { xs: '1fr', md: 'minmax(320px, 1fr) minmax(360px, 1.3fr) minmax(300px, 1fr)' },
-          alignItems: 'start',
+          display: { xs: 'block', md: 'grid' },
+          gridTemplateColumns: { md: 'minmax(300px, 380px) minmax(420px, 1fr) minmax(320px, 420px)' },
+          background: '#f6f5fb',
+          minHeight: `calc(100vh - ${HEADER}px)`,
         }}
       >
-        <Box sx={{ display: 'grid', gap: 2 }}>
+        <Column label="Designs">
+          <DesignList />
+        </Column>
+        <Column label="Sequence">
+          <SequenceEditor />
+        </Column>
+        <Column label="Preview and board">
+          <Preview />
           <BoardPanel />
           <Box>
             <Typography variant="subtitle2">
@@ -56,12 +125,7 @@ export function App() {
             </Typography>
             <Log />
           </Box>
-        </Box>
-        <SequenceEditor />
-        <Box sx={{ display: 'grid', gap: 2 }}>
-          <Preview />
-          <DesignList />
-        </Box>
+        </Column>
       </Box>
       <ConfirmOpsDialog />
     </ThemeProvider>

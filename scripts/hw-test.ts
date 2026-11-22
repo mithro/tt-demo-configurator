@@ -79,9 +79,10 @@ async function main() {
   await repl.enter();
 
   let info = await detect(repl);
-  console.log(`board: ${info.machine} SDK ${info.sdk} shuttle ${info.shuttle} rom ${JSON.stringify(info.rom)} projects ${info.projects} firmware ${info.firmware} demo=${info.demoSetting}`);
+  console.log(`board: ${info.machine} SDK ${info.sdk} shuttle ${info.shuttle} rom ${JSON.stringify(info.rom)} projects ${info.projects} firmware ${info.firmware} demo=${info.demoSetting} mode ${info.mode} dipOn ${JSON.stringify(info.dipOn)} errors ${JSON.stringify(info.errors)}`);
   check('detects the chip', info.shuttle === shuttle, String(info.shuttle));
   check('detects an RP2350', info.rp2350, info.machine);
+  check('reads the DIP switches', Array.isArray(info.dipOn), JSON.stringify(info.dipOn));
 
   const backupDir = path.resolve('tmp', `hw-backup-${shuttle}`);
   mkdirSync(backupDir, { recursive: true });
