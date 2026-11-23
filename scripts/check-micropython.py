@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-FILES = [ROOT / "src/lib/py/detect.py", ROOT / "src/data/demo.py"]
+FILES = [ROOT / "src/lib/py/detect.py", ROOT / "src/data/demo.py", ROOT / "src/data/demo-sdk2.py"]
 out_dir = ROOT / "tmp" / "mpy"
 out_dir.mkdir(parents=True, exist_ok=True)
 bad = 0

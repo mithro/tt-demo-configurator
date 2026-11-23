@@ -3,6 +3,7 @@
 // everything that would make a board show the error pattern is refused before writing.
 import { createSignal } from 'solid-js';
 import { unsupportedReason } from '~/lib/board';
+import { STOCK_FIRMWARE } from '~/lib/firmware';
 import { DemoFile, ENTRY_FIELDS, Entry, formatDemo, Step } from '~/lib/demoFile';
 import { importHandmade } from '~/lib/handmade';
 import {
@@ -193,10 +194,11 @@ export async function bootloader() {
   if (!supported()) return;
   backupBoardFiles();
   const r = s.repl();
-  if (!r) return;
+  const b = s.board();
+  if (!r || !b) return;
   await rebootToBootloader(r);
   await s.disconnect();
-  s.say('the board is now a USB drive (RP2350): copy the .uf2 onto it, then reconnect', 'ok');
+  s.say(`the board is now a USB drive (${b.mcu}): copy ${STOCK_FIRMWARE[b.mcu!].uf2} or another ${b.mcu} .uf2 onto it, then reconnect`, 'ok');
 }
 
 const BACKUP_KEY = 'tt-demo-configurator.backup';

@@ -3,11 +3,33 @@
 // The demo helper for stock firmware, and the file changes behind "install helper",
 // "make permanent", "turn off" and "reset to stock". Planning is pure (BoardInfo in,
 // FileOp list out) so it can be tested and shown to the user before anything is written.
+import demoSdk2Py from '~/data/demo-sdk2.py?raw';
 import demoPy from '~/data/demo.py?raw';
 import stockIndex from '~/data/stock-main/index.json';
 import { BoardInfo, HELPER_MARKER } from './board';
+import { sha256Hex } from './sha256';
 
-export { demoPy as HELPER_DEMO_PY };
+/**
+ * The demo module installed as /demo.py (and sent to RAM for tests) on stock firmware:
+ * the pinned firmware copy on RP2350 boards (SDK 3.x), its port to SDK 2.x on RP2040 ones.
+ */
+export const HELPER_DEMO_PY = { RP2350: demoPy, RP2040: demoSdk2Py } as const;
+const HELPER_SHA256 = { RP2350: sha256Hex(demoPy), RP2040: sha256Hex(demoSdk2Py) } as const;
+
+/** The helper's demo module for this board. A board of neither kind is refused before this. */
+export function helperDemoPy(info: Pick<BoardInfo, 'mcu'>): string {
+  return HELPER_DEMO_PY[info.mcu ?? 'RP2350'];
+}
+
+/** Is the board's /demo.py exactly the helper the app would install on it? */
+export function helperDemoPyCurrent(info: Pick<BoardInfo, 'mcu' | 'demoPy'>): boolean {
+  return info.demoPy?.sha256 === helperDemoPySha256(info);
+}
+
+/** SHA-256 (hex) of helperDemoPy(info). */
+export function helperDemoPySha256(info: Pick<BoardInfo, 'mcu'>): string {
+  return HELPER_SHA256[info.mcu ?? 'RP2350'];
+}
 
 const stockFiles = import.meta.glob('../data/stock-main/*.py', { query: '?raw', import: 'default', eager: true }) as Record<
   string,
@@ -112,7 +134,7 @@ function originalMain(info: BoardInfo): string | null {
 export function planInstallHelper(info: BoardInfo): FileOp[] {
   if (info.firmware === 'custom') return [];
   const ops: FileOp[] = [];
-  if (info.demoPy !== demoPy) ops.push({ op: 'write', path: '/demo.py', text: demoPy, why: 'the demo runner' });
+  if (!helperDemoPyCurrent(info)) ops.push({ op: 'write', path: '/demo.py', text: helperDemoPy(info), why: 'the demo runner' });
   if (info.firmware === 'helper') {
     if (info.main !== WRAPPER_MAIN) ops.push({ op: 'write', path: '/main.py', text: WRAPPER_MAIN, why: 'update the wrapper' });
     return ops;

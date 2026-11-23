@@ -15,11 +15,17 @@ import traceback
 
 ROOT = os.path.abspath(sys.argv[1])
 os.makedirs(ROOT, exist_ok=True)
+# the board's working directory is "/": relative paths land in ROOT too, and, as on the
+# board, modules in "/" (the helper's /demo.py) can be imported
+os.chdir(ROOT)
+sys.path.insert(0, ROOT)
 _open, _remove, _rename, _stat, _listdir = builtins.open, os.remove, os.rename, os.stat, os.listdir
 
 
 def _map(p):
     p = os.fspath(p)
+    if p == ROOT or p.startswith(ROOT + os.sep):
+        return p  # already mapped (CPython's own code makes relative paths absolute)
     return os.path.join(ROOT, p.lstrip("/")) if p.startswith("/") else os.path.join(ROOT, p)
 
 

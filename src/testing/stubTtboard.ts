@@ -2,18 +2,26 @@
 // Python that installs a stand-in for the firmware's ttboard package in the CPython fake
 // board, enough for detect.py: DemoBoard.get() with a shuttle, chip ROM and version,
 // and the config.ini parser's [DEFAULT] lookup.
+//
+// mcu 'RP2040' stands in for an RP2040 demoboard on SDK 2.x where the two differ in what
+// the app uses: the platform flag is IsRP2040 (3.x: IsRP2), and project lookups take
+// only addresses (2.x shuttle indexes have no subtiles).
+import type { Mcu } from '~/lib/firmware';
+
 export function stubTtboard(
-  opts: { shuttle?: string; projects?: number; firmwareDemo?: boolean; sdk?: string; index?: { projects: object[] } } = {},
+  opts: { mcu?: Mcu; shuttle?: string; projects?: number; firmwareDemo?: boolean; sdk?: string; index?: { projects: object[] } } = {},
 ) {
-  const { shuttle = 'ttsky25a', projects = 237, firmwareDemo = false, sdk = '3.1.1', index = { projects: [] } } = opts;
+  const { mcu = 'RP2350', projects = 237, firmwareDemo = false, index = { projects: [] } } = opts;
+  const sdk2 = mcu === 'RP2040';
+  const { shuttle = sdk2 ? 'tt07' : 'ttsky25a', sdk = sdk2 ? '2.0.4' : '3.1.1' } = opts;
   return `
 import sys, types
-sys.implementation._machine = 'Raspberry Pi Pico2 with RP2350'
+sys.implementation._machine = ${JSON.stringify(sdk2 ? 'Raspberry Pi Pico with RP2040' : 'Raspberry Pi Pico2 with RP2350')}
 for name in ('ttboard', 'ttboard.demoboard', 'ttboard.config', 'ttboard.config.parser', 'ttboard.util',
              'ttboard.util.platform', 'ttboard.util.time', 'ttboard.log', 'ttboard.pins', 'ttboard.pins.desktop_pin', 'ttboard.mode',
              'ttboard.pins.upython'):
     sys.modules[name] = types.ModuleType(name)
-sys.modules['ttboard.util.platform'].IsRP2 = False
+setattr(sys.modules['ttboard.util.platform'], ${JSON.stringify(sdk2 ? 'IsRP2040' : 'IsRP2')}, False)
 sys.modules['ttboard.util.time'].sleep_ms = lambda ms: None
 sys.modules['ttboard'].util = sys.modules['ttboard.util']
 sys.modules['ttboard.util'].time = sys.modules['ttboard.util.time']
@@ -40,6 +48,7 @@ class _Shuttle:
         for p in __import__('json').loads(${JSON.stringify(JSON.stringify(index.projects))}):
             if p.get('type') == 'group': continue
             sub = int(p.get('subtile_addr', 0))
+            if sub and ${sdk2 ? 'True' : 'False'}: continue
             self.by_key[f"{p['address']}-{sub}" if sub else int(p['address'])] = _Design(p, self)
     def get(self, key):
         if key not in self.by_key: raise AttributeError('Unknown project (%s)' % key)

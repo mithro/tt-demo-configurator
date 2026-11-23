@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { BoardInfo } from './board';
 import {
   HELPER_DEMO_PY,
+  helperDemoPy,
   isStockMain,
   planInstallHelper,
   planMakePermanent,
@@ -15,14 +17,17 @@ import {
   stockMainFor,
   WRAPPER_MAIN,
 } from './helper';
+import { sha256Hex } from './sha256';
 
 const B = path.resolve(__dirname, '../../test/fixtures/boards');
 const stockIni = readFileSync(path.join(B, 'stock-config.ini'), 'utf8');
 const stock31 = stockMainFor('3.1.1')!;
+/** The port check runs scripts/port-demo-sdk2.py, which needs uv. */
+const haveUv = !spawnSync('uv', ['--version']).error;
 
 function board(over: Partial<BoardInfo>): BoardInfo {
   return {
-    machine: 'RP2350', sdk: '3.1.1', rp2350: true, shuttle: 'ttsky25a', rom: null, isFpga: false, projects: 237,
+    machine: 'RP2350', mcu: 'RP2350', sdk: '3.1.1', shuttle: 'ttsky25a', rom: null, isFpga: false, projects: 237,
     firmware: 'stock', demoSetting: false, mode: 'ASIC_RP_CONTROL', dipOn: [], demoRunning: false, demoErrors: [], main: stock31, mainStock: null,
     configIni: stockIni, demoJson: null, demoPy: null, vgaCycle: null, errors: [], ...over,
   };
@@ -81,10 +86,10 @@ describe('plans', () => {
   });
   it('needs nothing on custom firmware or an up-to-date helper', () => {
     expect(planInstallHelper(board({ firmware: 'custom' }))).toEqual([]);
-    expect(planInstallHelper(board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPy: HELPER_DEMO_PY }))).toEqual([]);
+    expect(planInstallHelper(board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2350) } }))).toEqual([]);
   });
   it('makes permanent, turns off and resets to stock', () => {
-    const helper = board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPy: HELPER_DEMO_PY });
+    const helper = board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2350) } });
     expect(written(planMakePermanent(helper, '{}'))).toEqual(['write /demo.json', 'write /config.ini']);
     const on = { ...helper, configIni: setDemoLine(stockIni, 'yes'), demoJson: '{}' };
     expect((planTurnOff(on)[0] as { text: string }).text).toContain('demo = no');
@@ -93,5 +98,48 @@ describe('plans', () => {
     expect(reset[0]).toMatchObject({ text: stock31 });
     expect(reset[4]).toMatchObject({ text: stockIni });
     expect(planResetToStock(board({}))).toEqual([]);
+  });
+});
+
+describe('RP2040 boards (SDK 2.x)', () => {
+  const stock204 = stockMainFor('2.0.4')!;
+  const ini204 = readFileSync(path.join(B, 'stock-config-2.0.4.ini'), 'utf8');
+  const rp2040 = (over: Partial<BoardInfo>) =>
+    board({ machine: 'Raspberry Pi Pico with RP2040', mcu: 'RP2040', sdk: '2.0.4', shuttle: 'tt07', main: stock204, configIni: ini204, ...over });
+  it('knows every 2.0.x stock main.py', () => {
+    for (const v of ['2.0.0', '2.0.1', '2.0.2', '2.0.3', '2.0.4']) expect(stockMainFor(v), v).toContain('BOOT: Tiny Tapeout SDK');
+    expect(stockMainFor('2.0.2')).toBe(stockMainFor('2.0.1'));
+    expect(isStockMain(stock204, '2.0.4')).toBe(true);
+    expect(isStockMain(stock204, '2.0.3')).toBe(false);
+  });
+  it('installs the SDK 2.x helper, never the 3.x one', () => {
+    expect(helperDemoPy({ mcu: 'RP2040' })).toBe(HELPER_DEMO_PY.RP2040);
+    const ops = planInstallHelper(rp2040({}));
+    expect(written(ops)).toEqual(['write /demo.py', 'write /main_stock.py', 'write /main.py']);
+    expect(ops[0]).toMatchObject({ text: HELPER_DEMO_PY.RP2040 });
+    expect(ops[1]).toMatchObject({ text: stock204 });
+    // a board with the 3.x helper on it gets the 2.x one
+    const wrong = rp2040({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock204, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2350) } });
+    expect(written(planInstallHelper(wrong))).toEqual(['write /demo.py']);
+    const right = { ...wrong, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2040) } };
+    expect(planInstallHelper(right)).toEqual([]);
+  });
+  it('makes permanent and resets to the exact 2.0.4 stock files', () => {
+    const helper = rp2040({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock204, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2040) } });
+    const perm = planMakePermanent(helper, '{}');
+    expect(written(perm)).toEqual(['write /demo.json', 'write /config.ini']);
+    const ini = (perm[1] as { text: string }).text;
+    expect(ini.split('\n').filter((l) => !ini204.split('\n').includes(l))).toEqual(['demo = yes']);
+    const reset = planResetToStock({ ...helper, configIni: ini, demoJson: '{}' });
+    expect(reset[0]).toMatchObject({ path: '/main.py', text: stock204 });
+    expect(reset.find((o) => o.path === '/config.ini')).toMatchObject({ text: ini204 });
+  });
+  it.skipIf(!haveUv)('has the SDK 2.x helper exactly as scripts/port-demo-sdk2.py makes it from the pinned demo.py', () => {
+    const REPO = path.resolve(__dirname, '../..');
+    const out = execFileSync('uv', ['run', '--no-project', 'python', '-I', 'scripts/port-demo-sdk2.py', 'src/data/demo.py', '-'], {
+      cwd: REPO,
+      encoding: 'utf8',
+    });
+    expect(out).toBe(HELPER_DEMO_PY.RP2040);
   });
 });
