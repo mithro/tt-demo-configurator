@@ -27,7 +27,7 @@ const haveUv = !spawnSync('uv', ['--version']).error;
 
 function board(over: Partial<BoardInfo>): BoardInfo {
   return {
-    machine: 'RP2350', mcu: 'RP2350', sdk: '3.1.1', shuttle: 'ttsky25a', rom: null, isFpga: false, projects: 237,
+    machine: 'RP2350', mcu: 'RP2350', sdk: '3.1.1', shuttle: 'ttsky25a', rom: null, isFpga: false, projects: 237, fpgaDesigns: null,
     firmware: 'stock', demoSetting: false, mode: 'ASIC_RP_CONTROL', dipOn: [], demoRunning: false, demoErrors: [], main: stock31, mainStock: null,
     configIni: stockIni, demoJson: null, demoPy: null, vgaCycle: null, errors: [], ...over,
   };
