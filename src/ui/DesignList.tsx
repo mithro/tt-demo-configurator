@@ -19,11 +19,12 @@ import {
   TextField,
   Typography,
 } from '@suid/material';
-import { createMemo, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, on, Show } from 'solid-js';
+import { FPGA_SHUTTLE } from '~/lib/fpga';
 import { showOne } from '~/lib/live';
 import { boardUsable } from './actions';
 import { PMOD_LIST, searchUrl, SiliconStatus } from '~/lib/projectSearch';
-import { clipUrls, pmodsOf, Project, projectKey, videoInfo } from '~/lib/shuttleIndex';
+import { clipUrls, mediaShuttle, pmodsOf, Project, projectKey, videoInfo } from '~/lib/shuttleIndex';
 import { Clip } from './Preview';
 import { previewSource, PreviewSourceToggle, setPreviewSource } from './PreviewSource';
 import { SimView } from './SimView';
@@ -73,8 +74,9 @@ function SiliconMark(props: { project: Project }) {
 const THUMB = { width: '80px', height: '60px', 'flex-shrink': 0 } as const;
 
 function Thumb(props: { project: Project; onClick: () => void }) {
-  const clip = () => clipUrls(s.seq.shuttle, props.project.macro);
-  const still = () => ['static', 'blank'].includes(videoInfo(s.seq.shuttle, props.project.macro)?.verdict ?? '');
+  const shuttle = () => mediaShuttle(s.seq.shuttle, props.project);
+  const clip = () => clipUrls(shuttle(), props.project.macro);
+  const still = () => ['static', 'blank'].includes(videoInfo(shuttle(), props.project.macro)?.verdict ?? '');
   return (
     <div style={{ ...THUMB, position: 'relative', background: '#222', cursor: clip() ? 'pointer' : 'default' }} onClick={() => clip() && props.onClick()}>
       <Show
@@ -101,6 +103,8 @@ export function DesignList() {
   const [query, setQuery] = createSignal('');
   const [sort, setSort] = createSignal<Sort>('title');
   const [review, setReview] = createSignal<number | null>(null);
+  // most of an FPGA board's bitstreams have no pinout to match a Pmod from: show them all
+  createEffect(on(() => s.seq.shuttle, (id) => id === FPGA_SHUTTLE && setFilter('all')));
 
   const inSeq = createMemo(() => new Set(s.seq.projects.map((e) => projectKey(e))));
   /** how many of the shuttle's designs each Pmod matches; only Pmods with a match get a chip */
@@ -122,7 +126,10 @@ export function DesignList() {
       return words.every((w) => hay.includes(w));
     });
     const by = sort();
-    const rank = (p: Project) => (videoInfo(s.seq.shuttle, p.macro)?.verdict === 'ok' ? 0 : clipUrls(s.seq.shuttle, p.macro) ? 1 : 2);
+    const rank = (p: Project) => {
+      const id = mediaShuttle(s.seq.shuttle, p);
+      return videoInfo(id, p.macro)?.verdict === 'ok' ? 0 : clipUrls(id, p.macro) ? 1 : 2;
+    };
     const chip = (p: Project) => SILICON[p.search?.silicon.status ?? 'untested'].rank;
     return out.sort((a, b) =>
       by === 'address'
@@ -153,6 +160,12 @@ export function DesignList() {
         </Show>
         <Show when={s.projectsError()}>
           <Alert severity="error">{s.projectsError()}</Alert>
+        </Show>
+        <Show when={s.seq.shuttle === FPGA_SHUTTLE && s.projectsFor() === FPGA_SHUTTLE}>
+          <Typography variant="caption" component="div" sx={{ mb: 1 }}>
+            The designs of the connected FPGA board: the bitstreams in its <code>/bitstreams</code>, numbered as its
+            firmware lists them. One named like a Tiny Tapeout project is shown with that project’s details and recording.
+          </Typography>
         </Show>
         <Show when={s.seq.shuttle}>
           <TextField size="small" fullWidth placeholder="Search title, author, macro, address, tags" value={query()} onChange={(_, v) => setQuery(v)} />
@@ -196,7 +209,9 @@ export function DesignList() {
                 </Typography>
                 <Typography variant="caption" noWrap component="div">
                   <SiliconMark project={p} />
-                  {projectKey(p)} · {p.author} · {p.clock_hz ? `${(p.clock_hz / 1e6).toFixed(3)} MHz` : 'clock not set'}
+                  {[projectKey(p), p.author, p.known && `as on ${p.known.shuttle}`, p.clock_hz ? `${(p.clock_hz / 1e6).toFixed(3)} MHz` : 'clock not set']
+                    .filter(Boolean)
+                    .join(' · ')}
                   {p.danger_level && p.danger_level !== 'safe' ? ` · not safe (${p.danger_level})` : ''}
                 </Typography>
               </div>
@@ -245,9 +260,17 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
             </DialogTitle>
             <DialogContent>
               <Typography variant="body2" gutterBottom>
-                {proj().author} · address {projectKey(proj())} · {proj().macro}
+                {[proj().author, `address ${projectKey(proj())}`, proj().macro].filter(Boolean).join(' · ')}
                 <Show when={props.inSeq.has(projectKey(proj()))}> · already in the sequence</Show>
               </Typography>
+              <Show when={proj().known}>
+                {(k) => (
+                  <Typography variant="body2" gutterBottom>
+                    A bitstream named like {proj().macro} at address {k().address} on {k().shuttle}: shown with that
+                    project’s details, recording and sources (matched by name only).
+                  </Typography>
+                )}
+              </Show>
               <Typography variant="body2" gutterBottom>
                 {siliconTitle(proj())[0].toUpperCase() + siliconTitle(proj()).slice(1)}
                 {' · Pmods: '}
@@ -255,7 +278,7 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
                   .map((id) => PMOD_LIST.find((m) => m.id === id)?.name ?? id)
                   .join(', ') || 'none matched'}
                 {' · '}
-                <Link href={searchUrl(s.seq.shuttle, proj().macro)} target="_blank">
+                <Link href={searchUrl(mediaShuttle(s.seq.shuttle, proj()), proj().macro)} target="_blank">
                   full entry in the project search
                 </Link>
               </Typography>
@@ -267,7 +290,7 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
               <Stack direction="row" sx={{ justifyContent: 'flex-end', mb: 1 }}>
                 <PreviewSourceToggle />
               </Stack>
-              <Show when={previewSource() === 'simulation'} fallback={<Clip shuttle={s.seq.shuttle} macro={proj().macro} />}>
+              <Show when={previewSource() === 'simulation'} fallback={<Clip shuttle={mediaShuttle(s.seq.shuttle, proj())} macro={proj().macro} />}>
                 <SimView
                   project={proj()}
                   entry={{ ui_in: 0, steps: [], clock_hz: proj().clock_hz || VGA_CLOCK_HZ }}

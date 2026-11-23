@@ -4,6 +4,7 @@ import { Alert, Box, Button, Card, CardContent, IconButton, MenuItem, Select, St
 import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import { parseByte } from '~/lib/byteValue';
 import type { Entry } from '~/lib/demoFile';
+import { FPGA_SHUTTLE } from '~/lib/fpga';
 import { projectKey, uiName } from '~/lib/shuttleIndex';
 import * as act from './actions';
 import { state as s } from './state';
@@ -221,7 +222,8 @@ export function SequenceEditor() {
   onMount(() => void s.ensureShuttles());
   let fileInput!: HTMLInputElement;
   const shuttleOptions = createMemo(() => {
-    const ids = s.shuttles().map((x) => x.id);
+    // the FPGA board has no shuttle index: it is offered while one is connected
+    const ids = [...(s.board()?.isFpga ? [FPGA_SHUTTLE] : []), ...s.shuttles().map((x) => x.id)];
     return s.seq.shuttle && !ids.includes(s.seq.shuttle) ? [s.seq.shuttle, ...ids] : ids;
   });
   const openFile = async (f: File | undefined) => {

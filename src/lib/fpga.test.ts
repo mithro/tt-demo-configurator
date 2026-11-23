@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import { FPGA4_BITSTREAMS } from '~/testing/fpga4';
-import { defaultMatchDeps, fpgaProjects, matchKnown } from './fpga';
+import { addressNote, defaultMatchDeps, fpgaProjects, matchKnown } from './fpga';
 import { indexLookup, mediaShuttle, Project } from './shuttleIndex';
 
 const designs = FPGA4_BITSTREAMS.map((name, address) => ({ address, name }));
@@ -30,6 +30,18 @@ describe('fpgaProjects', () => {
     const lookup = indexLookup(fpgaProjects(designs));
     expect(lookup(7)).toEqual({ name: 'tt_um_vga_pattern', dangerous: false });
     expect(lookup(8)).toBeNull();
+  });
+});
+
+describe('addressNote', () => {
+  it('names the bitstream behind each address the sequence uses, once each, in order', () => {
+    const e = (address: number) => ({ address, subtile: 0, duration_ms: 1, clock_hz: 0, ui_in: 0, steps: [] });
+    expect(addressNote([e(7), e(2), e(7)], designs)).toBe(
+      'On the FPGA board a design is its place in the list of bitstreams in /bitstreams: this sequence shows ' +
+        '7 = tt_um_vga_pattern, 2 = tt_um_counter_7seg. Adding or removing a bitstream there can renumber them, and the ' +
+        'board would then show other designs: make the sequence again after changing its bitstreams.',
+    );
+    expect(addressNote([e(9)], designs)).toContain('9 = (not on this board)');
   });
 });
 

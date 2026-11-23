@@ -126,9 +126,18 @@ export function BoardPanel() {
             {(info) => (
               <Stack spacing={1}>
                 <Row label="Chip">
-                  <b>{info().isFpga ? 'FPGA board' : (info().shuttle ?? 'unknown')}</b>
-                  <Show when={!info().isFpga && dieName(info())}>{(d) => <b> · {d()}</b>}</Show>{' '}
-                  <span style={{ opacity: 0.7 }}>{romText(info())}</span>
+                  <Show
+                    when={!info().isFpga}
+                    fallback={
+                      <>
+                        <b>FPGA board</b> <span style={{ opacity: 0.7 }}>(an FPGA breakout in place of a chip)</span>
+                      </>
+                    }
+                  >
+                    <b>{info().shuttle ?? 'unknown'}</b>
+                    <Show when={dieName(info())}>{(d) => <b> · {d()}</b>}</Show>{' '}
+                    <span style={{ opacity: 0.7 }}>{romText(info())}</span>
+                  </Show>
                 </Row>
                 <Row label="Controller">{info().machine || 'unknown'}</Row>
                 <Row label="Firmware">
@@ -149,7 +158,18 @@ export function BoardPanel() {
                     </Alert>
                   }
                 >
-                <Row label="Projects">{info().projects ?? '?'} on this chip</Row>
+                <Row label="Projects">
+                  {info().projects ?? '?'} {info().isFpga ? 'bitstreams in /bitstreams' : 'on this chip'}
+                </Row>
+                <Show when={info().isFpga}>
+                  <Alert severity="info">
+                    On the FPGA board a design is a bitstream in <code>/bitstreams</code>, and a sequence picks it by its place in
+                    the firmware’s list of them (0 is the first). Adding or removing a bitstream can renumber the others, and a
+                    permanent sequence would then show other designs. While a demo runs the board drives <code>ui_in</code>{' '}
+                    (ASIC_RP_CONTROL mode; its firmware starts in a mode that doesn’t), and each switch takes about 1.5 s to
+                    load the next bitstream.
+                  </Alert>
+                </Show>
                 <Row label="Type">
                   <Chip size="small" color="primary" label={FIRMWARE[info().firmware].label} />
                 </Row>
@@ -237,6 +257,12 @@ export function BoardPanel() {
                   <Typography variant="body2">
                     Flash firmware: save the board&apos;s files, reboot into the bootloader, then copy the .uf2 onto the
                     drive that appears.{' '}
+                    <Show when={info().isFpga}>
+                      <b>
+                        Flashing replaces every file, the bitstreams in /bitstreams too (“Save board files” keeps only
+                        /demo.json and config.ini): copy them off first.
+                      </b>{' '}
+                    </Show>
                     <Link href={STOCK_FIRMWARE[info().mcu!].url} target="_blank">
                       Stock {STOCK_FIRMWARE[info().mcu!].latest} ({STOCK_FIRMWARE[info().mcu!].uf2})
                     </Link>

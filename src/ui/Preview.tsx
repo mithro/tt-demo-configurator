@@ -3,7 +3,7 @@
 // the sequence through with each entry's duration.
 import { Box, Button, Card, CardContent, Stack, Typography } from '@suid/material';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
-import { clipUrls, videoInfo } from '~/lib/shuttleIndex';
+import { clipUrls, mediaShuttle, videoInfo } from '~/lib/shuttleIndex';
 import { previewSource, PreviewSourceToggle, setPreviewSource } from './PreviewSource';
 import { SimView } from './SimView';
 import { state as s } from './state';
@@ -162,7 +162,7 @@ export function Preview() {
           when={previewSource() === 'simulation'}
           fallback={
             <Clip
-              shuttle={s.seq.shuttle}
+              shuttle={mediaShuttle(s.seq.shuttle, entry() && s.projectOf(entry()!))}
               macro={macro()}
               paused={mode() !== 'playing'}
               pausedLabel={mode() === 'paused' ? 'sequence paused' : 'not playing: press Play sequence, or click the clip to watch just this design'}

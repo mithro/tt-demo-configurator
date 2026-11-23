@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import { unsupportedReason } from '~/lib/board';
 import { STOCK_FIRMWARE } from '~/lib/firmware';
 import { DemoFile, ENTRY_FIELDS, Entry, formatDemo, Step } from '~/lib/demoFile';
+import { addressNote } from '~/lib/fpga';
 import { importHandmade } from '~/lib/handmade';
 import {
   FileOp,
@@ -44,7 +45,16 @@ export function setupWarnings(): string[] {
     );
   }
   if (b.dipOn === null) w.push("couldn't read the ui_in DIP switches: check by hand that all 8 are OFF");
-  if (b.mode && b.mode !== 'ASIC_RP_CONTROL') w.push(`the board is in ${b.mode} mode: the demo needs ASIC_RP_CONTROL to drive ui_in (set mode in config.ini)`);
+  // the FPGA board's SDK ignores config.ini's mode; the app's demo switches it itself
+  if (b.mode && b.mode !== 'ASIC_RP_CONTROL' && !b.isFpga) {
+    w.push(`the board is in ${b.mode} mode: the demo needs ASIC_RP_CONTROL to drive ui_in (set mode in config.ini)`);
+  }
+  if (b.isFpga && b.firmware === 'custom') {
+    w.push(
+      'the demo-mode firmware leaves the FPGA board in its start-up mode, where ui_in isn’t driven: after a power-up ' +
+        'the designs won’t get their ui_in or steps (a test run from here does drive them)',
+    );
+  }
   return w;
 }
 
@@ -56,7 +66,9 @@ export function blockers(): string[] {
   const unsupported = unsupportedReason(b);
   if (unsupported) return [unsupported];
   if (!b.shuttle || b.shuttle === 'unknown') out.push("the chip couldn't be identified: check it is seated properly");
-  if (b.projects === 0) out.push(`the firmware has no project list for ${b.shuttle}: upgrade the firmware`);
+  if (b.projects === 0) {
+    out.push(b.isFpga ? 'this FPGA board has no bitstreams in /bitstreams' : `the firmware has no project list for ${b.shuttle}: upgrade the firmware`);
+  }
   if (b.shuttle && s.seq.shuttle !== b.shuttle) out.push(`the sequence is for ${s.seq.shuttle || '(no shuttle)'} but the chip is ${b.shuttle}`);
   if (s.errors().length) out.push('the sequence has errors (see the list above the sequence)');
   return out;
@@ -152,7 +164,8 @@ export async function makePermanent() {
   const b = s.board()!;
   const ops = plan(() => planMakePermanent(b, formatDemo(current())));
   if (!ops) return;
-  if (await apply('Make permanent', ops, setupWarnings())) s.say('the board will run this demo every time it powers up (reboot to start it now)', 'ok');
+  const notes = b.fpgaDesigns ? [addressNote(current().projects, b.fpgaDesigns)] : [];
+  if (await apply('Make permanent', ops, [...setupWarnings(), ...notes])) s.say('the board will run this demo every time it powers up (reboot to start it now)', 'ok');
 }
 
 export async function installHelper() {

@@ -6,6 +6,7 @@
 // Tiny Tapeout project (its macro, e.g. tt_um_factory_test) is shown with that project's
 // title, pinout, clock, sources and recording; the others only have the board's name.
 import type { FpgaDesign } from './board';
+import type { Entry } from './demoFile';
 import { loadSearchInfo } from './projectSearch';
 import { loadShuttle, Project, videoInfo } from './shuttleIndex';
 
@@ -15,6 +16,20 @@ export const FPGA_SHUTTLE = 'FPGA';
 /** The board's designs as projects, named only as the board names them. */
 export function fpgaProjects(designs: FpgaDesign[]): Project[] {
   return designs.map((d) => ({ macro: d.name, address: d.address, subtile: 0, title: d.name, author: '', clock_hz: 0, pinout: {} }));
+}
+
+/**
+ * What to tell whoever makes an FPGA sequence permanent: each address it uses is only a
+ * place in the board's list of bitstreams, which changes when that directory does.
+ */
+export function addressNote(entries: Pick<Entry, 'address'>[], designs: FpgaDesign[]): string {
+  const names = new Map(designs.map((d) => [d.address, d.name]));
+  const used = [...new Set(entries.map((e) => e.address))].map((a) => `${a} = ${names.get(a) ?? '(not on this board)'}`);
+  return (
+    `On the FPGA board a design is its place in the list of bitstreams in /bitstreams: this sequence shows ${used.join(', ')}. ` +
+    'Adding or removing a bitstream there can renumber them, and the board would then show other designs: ' +
+    'make the sequence again after changing its bitstreams.'
+  );
 }
 
 export interface MatchDeps {
