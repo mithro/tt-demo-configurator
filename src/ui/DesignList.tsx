@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// The shuttle's designs: search, filter by Pmod (Tiny VGA by default), sort, add to the
-// sequence; and a one-at-a-time review that shows each design's recording, like the
+// The shuttle's designs: search (titles, authors, tags), filter by Pmod (Tiny VGA by default),
+// sort, add to the sequence; and a one-at-a-time review that shows each design's recording, like the
 // Shenzhen set-up. The list scrolls inside the card so the filters stay in view.
 import {
   Alert,
@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   Chip,
+  Link,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,19 +22,53 @@ import {
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { showOne } from '~/lib/live';
 import { boardUsable } from './actions';
+import { PMOD_LIST, searchUrl, SiliconStatus } from '~/lib/projectSearch';
 import { clipUrls, pmodsOf, Project, projectKey, videoInfo } from '~/lib/shuttleIndex';
 import { Clip } from './Preview';
 import { previewSource, PreviewSourceToggle, setPreviewSource } from './PreviewSource';
 import { SimView } from './SimView';
 import { state as s, VGA_CLOCK_HZ } from './state';
 
-type Filter = 'tiny-vga' | 'gamepad' | 'all';
-type Sort = 'title' | 'address' | 'video';
-const FILTERS: [Filter, string][] = [
-  ['tiny-vga', 'Tiny VGA'],
-  ['gamepad', 'Gamepad'],
-  ['all', 'All'],
-];
+/** A Pmod id from the project-search list, or every design. */
+type Filter = string;
+type Sort = 'title' | 'address' | 'video' | 'silicon';
+
+const SILICON: Record<SiliconStatus, { mark: string; color: string; words: string; rank: number }> = {
+  working: { mark: '✓ chip', color: '#2e7d32', words: 'reported working on real chips', rank: 0 },
+  partial: { mark: '◐ chip', color: '#b26a00', words: 'reported partly working on real chips', rank: 1 },
+  untested: { mark: '', color: '', words: 'no reports from real chips yet', rank: 2 },
+  broken: { mark: '✗ chip', color: '#c62828', words: 'reported not working on real chips', rank: 3 },
+};
+
+/** Chip labels; the full name and pins show on hover. */
+const SHORT: Record<string, string> = {
+  'tiny-vga': 'Tiny VGA',
+  'tt-audio': 'Audio',
+  'qspi-pmod': 'QSPI',
+  gamepad: 'Gamepad',
+  spi: 'SPI',
+  'uart-pmod': 'UART',
+  'i2c-pmod': 'I2C',
+  'uart-usb': 'USB UART',
+};
+
+function siliconTitle(p: Project): string {
+  const s = p.search?.silicon;
+  if (!s) return 'not in the project-search database';
+  const counts = [s.working && `${s.working} working`, s.partial && `${s.partial} partly`, s.broken && `${s.broken} not working`].filter(Boolean);
+  return `${SILICON[s.status].words}${counts.length ? ` (${counts.join(', ')})` : ''}`;
+}
+
+function SiliconMark(props: { project: Project }) {
+  const s = () => props.project.search?.silicon.status;
+  return (
+    <Show when={s() && SILICON[s()!].mark}>
+      <span title={siliconTitle(props.project)} style={{ color: SILICON[s()!].color, 'font-weight': 600, 'margin-right': '4px', 'white-space': 'nowrap' }}>
+        {SILICON[s()!].mark}
+      </span>
+    </Show>
+  );
+}
 
 const THUMB = { width: '80px', height: '60px', 'flex-shrink': 0 } as const;
 
@@ -68,22 +103,35 @@ export function DesignList() {
   const [review, setReview] = createSignal<number | null>(null);
 
   const inSeq = createMemo(() => new Set(s.seq.projects.map((e) => projectKey(e))));
+  /** how many of the shuttle's designs each Pmod matches; only Pmods with a match get a chip */
+  const pmodCounts = createMemo(() => {
+    const n = new Map<string, number>();
+    for (const p of s.projects()) for (const id of pmodsOf(s.seq.shuttle, p)) n.set(id, (n.get(id) ?? 0) + 1);
+    return n;
+  });
+  const filters = createMemo(() => [
+    ...PMOD_LIST.filter((m) => pmodCounts().has(m.id) || m.id === filter()).map((m) => ({ id: m.id, label: `${SHORT[m.id] ?? m.name} ${pmodCounts().get(m.id) ?? 0}`, about: `${m.name}: ${m.pins}` })),
+    { id: 'all', label: 'All', about: 'every design on the shuttle' },
+  ]);
   const list = createMemo(() => {
-    const q = query().trim().toLowerCase();
+    const words = query().trim().toLowerCase().split(/\s+/).filter(Boolean);
     const f = filter();
     const out = s.projects().filter((p) => {
       if (f !== 'all' && !pmodsOf(s.seq.shuttle, p).includes(f)) return false;
-      if (!q) return true;
-      return `${p.title} ${p.author} ${p.macro} ${p.address}`.toLowerCase().includes(q);
+      const hay = `${p.title} ${p.author} ${p.macro} ${p.address} ${p.search?.tags.join(' ') ?? ''}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
     });
     const by = sort();
     const rank = (p: Project) => (videoInfo(s.seq.shuttle, p.macro)?.verdict === 'ok' ? 0 : clipUrls(s.seq.shuttle, p.macro) ? 1 : 2);
+    const chip = (p: Project) => SILICON[p.search?.silicon.status ?? 'untested'].rank;
     return out.sort((a, b) =>
       by === 'address'
         ? a.address - b.address || a.subtile - b.subtile
         : by === 'video'
           ? rank(a) - rank(b) || a.title.localeCompare(b.title)
-          : a.title.localeCompare(b.title),
+          : by === 'silicon'
+            ? chip(a) - chip(b) || a.title.localeCompare(b.title)
+            : a.title.localeCompare(b.title),
     );
   });
 
@@ -107,18 +155,26 @@ export function DesignList() {
           <Alert severity="error">{s.projectsError()}</Alert>
         </Show>
         <Show when={s.seq.shuttle}>
-          <TextField size="small" fullWidth placeholder="Search title, author, macro, address" value={query()} onChange={(_, v) => setQuery(v)} />
-          <Stack direction="row" spacing={0.5} sx={{ mt: 1, alignItems: 'center' }}>
-            <For each={FILTERS}>
-              {([k, label]) => <Chip size="small" label={label} color={filter() === k ? 'primary' : 'default'} onClick={() => setFilter(k)} />}
+          <TextField size="small" fullWidth placeholder="Search title, author, macro, address, tags" value={query()} onChange={(_, v) => setQuery(v)} />
+          <Stack direction="row" sx={{ mt: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+            <For each={filters()}>
+              {(f) => <Chip size="small" label={f.label} title={f.about} color={filter() === f.id ? 'primary' : 'default'} onClick={() => setFilter(f.id)} />}
             </For>
             <span style={{ 'flex-grow': 1 }} />
             <Select size="small" variant="standard" value={sort()} onChange={(e) => setSort(e.target.value as Sort)} sx={{ fontSize: '13px' }}>
               <MenuItem value="title">A–Z</MenuItem>
               <MenuItem value="address">by address</MenuItem>
               <MenuItem value="video">recorded first</MenuItem>
+              <MenuItem value="silicon">working on chips first</MenuItem>
             </Select>
           </Stack>
+          <Typography variant="caption" component="div" sx={{ mt: 0.5, opacity: 0.7 }}>
+            Pmods are matched from pin names, not tested; tags are AI-written and unchecked (from the{' '}
+            <Link href="https://mith.ro/tinytapeout-project-search/" target="_blank">
+              project search
+            </Link>
+            ).
+          </Typography>
           <Button size="small" fullWidth variant="outlined" sx={{ mt: 1 }} disabled={!list().length} onClick={() => setReview(0)}>
             Review these {list().length} one at a time
           </Button>
@@ -139,6 +195,7 @@ export function DesignList() {
                   <b>{p.title}</b>
                 </Typography>
                 <Typography variant="caption" noWrap component="div">
+                  <SiliconMark project={p} />
                   {projectKey(p)} · {p.author} · {p.clock_hz ? `${(p.clock_hz / 1e6).toFixed(3)} MHz` : 'clock not set'}
                   {p.danger_level && p.danger_level !== 'safe' ? ` · not safe (${p.danger_level})` : ''}
                 </Typography>
@@ -191,6 +248,22 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
                 {proj().author} · address {projectKey(proj())} · {proj().macro}
                 <Show when={props.inSeq.has(projectKey(proj()))}> · already in the sequence</Show>
               </Typography>
+              <Typography variant="body2" gutterBottom>
+                {siliconTitle(proj())[0].toUpperCase() + siliconTitle(proj()).slice(1)}
+                {' · Pmods: '}
+                {pmodsOf(s.seq.shuttle, proj())
+                  .map((id) => PMOD_LIST.find((m) => m.id === id)?.name ?? id)
+                  .join(', ') || 'none matched'}
+                {' · '}
+                <Link href={searchUrl(s.seq.shuttle, proj().macro)} target="_blank">
+                  full entry in the project search
+                </Link>
+              </Typography>
+              <Show when={proj().search?.tags.length}>
+                <Typography variant="caption" component="div" gutterBottom>
+                  Tags (AI-written, unchecked): {proj().search!.tags.join(', ')}
+                </Typography>
+              </Show>
               <Stack direction="row" sx={{ justifyContent: 'flex-end', mb: 1 }}>
                 <PreviewSourceToggle />
               </Stack>

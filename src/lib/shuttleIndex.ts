@@ -3,6 +3,7 @@
 // lookup the validator uses to check addresses.
 import videos from '~/data/videos.json';
 import type { Lookup } from './demoFile';
+import { loadSearchInfo, SearchInfo } from './projectSearch';
 
 export interface Project {
   macro: string;
@@ -16,6 +17,8 @@ export interface Project {
   commit?: string;
   danger_level?: string;
   pinout: Record<string, string>;
+  /** From the project-search database; absent when it doesn't have the design. */
+  search?: SearchInfo;
 }
 
 export interface ShuttleInfo {
@@ -55,7 +58,11 @@ export async function loadShuttle(id: string): Promise<Project[]> {
   const r = await fetch(`${INDEX}/${encodeURIComponent(id)}.json?fields=${FIELDS}`);
   if (!r.ok) throw new Error(`index.tinytapeout.com/${id}.json: HTTP ${r.status}`);
   const data: { projects: Record<string, unknown>[] } = await r.json();
-  return data.projects.map(toProject).filter((p) => p.type !== 'group');
+  const search = await loadSearchInfo(id);
+  return data.projects
+    .map(toProject)
+    .filter((p) => p.type !== 'group')
+    .map((p) => (search[p.macro] ? { ...p, search: search[p.macro] } : p));
 }
 
 export function projectKey(p: Pick<Project, 'address' | 'subtile'>): string {
@@ -99,10 +106,13 @@ export function isTinyVga(p: Project): boolean {
   return /v.?sync/.test(uo(3)) && /h.?sync/.test(uo(7)) && /r/.test(uo(0)) && /g/.test(uo(1)) && /b/.test(uo(2));
 }
 
-/** Pmods a design works with: the videos project's list, or Tiny VGA from the pinout. */
+/**
+ * Pmods a design works with: those the VGA-videos project lists and those the project-search
+ * database matched from its pin names; with neither, Tiny VGA if its pinout looks like it.
+ */
 export function pmodsOf(shuttle: string, p: Project): string[] {
-  const known = videoInfo(shuttle, p.macro)?.pmods;
-  if (known?.length) return known;
+  const known = [...new Set([...(videoInfo(shuttle, p.macro)?.pmods ?? []), ...(p.search?.pmods ?? [])])];
+  if (known.length) return known;
   return isTinyVga(p) ? ['tiny-vga'] : [];
 }
 

@@ -1,0 +1,50 @@
+[
+ {
+  "id": "tiny-vga",
+  "name": "Tiny VGA",
+  "pins": "uo[0..7] = R1 G1 B1 vsync R0 G0 B0 hsync",
+  "url": "https://github.com/mole99/tiny-vga"
+ },
+ {
+  "id": "tt-audio",
+  "name": "TT Audio",
+  "pins": "audio on uo[7] or uio[7]; stereo on [6] and [7]",
+  "url": "https://github.com/MichaelBell/tt-audio-pmod"
+ },
+ {
+  "id": "qspi-pmod",
+  "name": "QSPI Flash/PSRAM",
+  "pins": "uio[0..7] = CS0 SD0 SD1 SCK SD2 SD3 CS1 CS2",
+  "url": "https://github.com/mole99/qspi-pmod"
+ },
+ {
+  "id": "gamepad",
+  "name": "Gamepad",
+  "pins": "ui[4] latch, ui[5] clock, ui[6] data",
+  "url": "https://github.com/psychogenic/gamepad-pmod"
+ },
+ {
+  "id": "spi",
+  "name": "SPI Pmod",
+  "pins": "uio[0..3] or uio[4..7] = CS MOSI MISO SCK",
+  "url": "https://tinytapeout.com/specs/pinouts/#spi"
+ },
+ {
+  "id": "uart-pmod",
+  "name": "UART Pmod",
+  "pins": "uio[1] TXD, uio[2] RXD (or uio[5], uio[6])",
+  "url": "https://tinytapeout.com/specs/pinouts/#uart-optional-hardware-flow-control"
+ },
+ {
+  "id": "i2c-pmod",
+  "name": "I2C Pmod",
+  "pins": "uio[2] SCL, uio[3] SDA (or uio[6], uio[7])",
+  "url": "https://tinytapeout.com/specs/pinouts/#i2c-optional-interrupt-and-reset"
+ },
+ {
+  "id": "uart-usb",
+  "name": "UART over demo board USB",
+  "pins": "ui[3] RX + uo[4] TX, or ui[1] RX + uo[0] TX",
+  "url": "https://tinytapeout.com/specs/pinouts/#uart-to-usb"
+ }
+]

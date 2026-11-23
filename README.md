@@ -81,6 +81,7 @@ v2.0.4; without `tmp/sdk2/` the test is skipped.
 Data refresh scripts:
 
 - `scripts/update-videos.py`: the trimmed VGA-videos index (`src/data/videos.json`).
+- `scripts/update-project-search.py`: per-shuttle Pmod matches, AI-written tags and silicon reports from the [project-search](https://mith.ro/tinytapeout-project-search/) database (`src/data/project-search/`).
 - `scripts/update-stock-main.py`: the stock `main.py` of every SDK 2.x and 3.x release.
 - `scripts/make-shenzhen-demos.py`: the ready-made sequences.
 - `scripts/check-micropython.py`: compile the board-side Python with `mpy-cross`.
