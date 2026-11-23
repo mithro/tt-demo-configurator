@@ -1,5 +1,5 @@
 # Pinned copy of ttboard/demo.py from mithro/tt-micropython-firmware
-# branch demo-gamepad, commit 6478057 (LGPL-2.1, like the firmware).
+# branch demo-gamepad, commit c32d62a (LGPL-2.1, like the firmware).
 # Installed on stock firmware as the top-level module /demo.py.
 '''
 Created on Nov 20, 2026
@@ -598,10 +598,20 @@ class StepPlayer:
                     self._send_report()
 
     def _send_report(self):
+        # A write through tt.ui_in.value takes about 1 ms (microcotb's
+        # port), so a report would take some 60 ms.  The SDK keeps the
+        # plain byte writer behind it as byte_write (None when the RP
+        # doesn't drive ui_in): with it a report takes about 1 ms, some
+        # 17 us per level (RP2350, SDK 3.1.0).
         port = self._tt.ui_in
+        write = getattr(port, 'byte_write', None)
         base = self._ui_in
-        for v in self._report:
-            port.value = base | v
+        if write is None:
+            for v in self._report:
+                port.value = base | v
+        else:
+            for v in self._report:
+                write(base | v)
 
     def _on_timer(self, _timer):
         try:
