@@ -4,6 +4,7 @@ import { PythonBoard, startPythonBoard } from '~/testing/pythonBoard';
 import { stubTtboard } from '~/testing/stubTtboard';
 import { detect, HELPER_MARKER, parseDetect, readFile, removeFile, unsupportedReason, writeFile } from './board';
 import { RawRepl } from './rawRepl';
+import { sha256Hex } from './sha256';
 
 let board: PythonBoard;
 let repl: RawRepl;
@@ -37,7 +38,9 @@ describe('detect', () => {
     await writeFile(repl, '/main.py', 'print("stock")\n');
     await writeFile(repl, '/config.ini', '[DEFAULT]\nlog_level = INFO\n');
     const info = await detect(repl);
-    expect(info).toMatchObject({ firmware: 'stock', sdk: '3.1.1', rp2350: true, shuttle: 'ttsky25a', projects: 237, demoSetting: false, isFpga: false });
+    expect(info).toMatchObject({ firmware: 'stock', sdk: '3.1.1', mcu: 'RP2350', shuttle: 'ttsky25a', projects: 237, demoSetting: false, isFpga: false });
+    expect(info.main).toBe('print("stock")\n');
+    expect(info.configIni).toBe('[DEFAULT]\nlog_level = INFO\n');
     expect(info.rom).toEqual({ shuttle: 'ttsky25a', repo: 'TinyTapeout/x', commit: 'abcd1234' });
     expect(info.demoJson).toBeNull();
   });
@@ -59,7 +62,7 @@ describe('detect', () => {
     await writeFile(repl, '/demo.py', '# demo\n');
     await writeFile(repl, '/demo.json', '{"version": 1}');
     await writeFile(repl, '/config.ini', '[DEFAULT]\ndemo = yes\n');
-    expect(await detect(repl)).toMatchObject({ firmware: 'helper', demoSetting: true, demoJson: '{"version": 1}' });
+    expect(await detect(repl)).toMatchObject({ firmware: 'helper', demoSetting: true, demoJson: '{"version": 1}', demoPySha256: sha256Hex('# demo\n') });
   });
   it('sees a hand-made Shenzhen board', async () => {
     await removeFile(repl, '/demo.py');
@@ -74,18 +77,56 @@ describe('detect', () => {
 });
 
 describe('unsupportedReason', () => {
-  const info = (machine: string, shuttle = 'tt07') =>
-    parseDetect('DETECT:' + JSON.stringify({ machine, shuttle, sdk: '3.1.1', projects: 10, main: null, demo_py: null, vga_cycle: null }));
-  it('accepts RP2350 boards', () => {
-    expect(unsupportedReason(info('Tiny Tapeout Demoboard ETR with RP2350'))).toBeNull();
+  const info = (machine: string, sdk: string | null = '3.1.1', shuttle = 'tt07') =>
+    parseDetect('DETECT:' + JSON.stringify({ machine, shuttle, sdk, projects: 10 }));
+  const etr = 'Tiny Tapeout Demoboard ETR with RP2350';
+  const pico = 'Raspberry Pi Pico with RP2040';
+  it('accepts RP2350 boards on SDK 3.x', () => {
+    expect(unsupportedReason(info(etr))).toBeNull();
+    expect(unsupportedReason(info(etr, '3.0.0'))).toBeNull();
   });
-  it('explains an RP2040 board in plain words', () => {
-    const why = unsupportedReason(info('Raspberry Pi Pico with RP2040'));
-    expect(why).toContain('has an RP2040');
-    expect(why).toContain('Demoboard: ETR');
+  it('accepts RP2040 boards on SDK 2.x', () => {
+    for (const v of ['2.0.0', '2.0.4']) expect(unsupportedReason(info(pico, v)), v).toBeNull();
+    expect(info(pico, '2.0.4').mcu).toBe('RP2040');
+  });
+  it('lets an unnumbered build through (from source, or no release file)', () => {
+    expect(unsupportedReason(info(pico, '0.0.0'))).toBeNull();
+    expect(unsupportedReason(info(pico, null))).toBeNull();
+  });
+  it('points an old RP2040 SDK at the RP2040 release, never the RP2350 one', () => {
+    const why = unsupportedReason(info(pico, '1.2.2'))!;
+    expect(why).toContain('SDK 1.2.2');
+    expect(why).toContain('tt-demo-rp2040-v2.0.4.uf2');
+    expect(why).toContain('/releases/tag/v2.0.4');
+    expect(why).not.toContain('rp2350');
+    expect(unsupportedReason(info(etr, '2.0.4'))).toContain('tt-demo-rp2350-v3.1.1.uf2');
+  });
+  it('explains a board it does not know', () => {
+    const why = unsupportedReason(info('ESP32 module'));
+    expect(why).toContain('has a ESP32 module');
     expect(why).toContain('still build, preview and download');
   });
   it('refuses the FPGA board', () => {
-    expect(unsupportedReason(info('Tiny Tapeout Demoboard ETR with RP2350', 'FPGA'))).toContain('FPGA breakout');
+    expect(unsupportedReason(info(etr, '3.1.1', 'FPGA'))).toContain('FPGA breakout');
+  });
+});
+
+describe('detect on an RP2040 board (SDK 2.x stub)', () => {
+  let b2: PythonBoard;
+  let r2: RawRepl;
+  beforeAll(async () => {
+    b2 = startPythonBoard();
+    r2 = new RawRepl(b2.transport, async () => undefined);
+    await r2.enter();
+    await r2.check(stubTtboard({ mcu: 'RP2040' }));
+  });
+  afterAll(() => b2.stop());
+  it('sees the chip, the SDK, the mode and the DIP switches', async () => {
+    await writeFile(r2, '/main.py', 'print("stock 2")\n');
+    const info = await detect(r2);
+    expect(info).toMatchObject({ mcu: 'RP2040', sdk: '2.0.4', shuttle: 'tt07', firmware: 'stock', mode: 'ASIC_RP_CONTROL', dipOn: [], demoPySha256: null });
+    expect(unsupportedReason(info)).toBeNull();
+    await r2.check('from ttboard.demoboard import DemoBoard\nDemoBoard.get().pins.ui_in7.switch = 1\n');
+    expect((await detect(r2)).dipOn).toEqual([7]);
   });
 });

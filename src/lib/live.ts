@@ -4,37 +4,68 @@
 // one from RAM (nothing written to flash; a reset returns to normal boot), and applying
 // FileOp plans.
 //
-// The demo module comes from the firmware when it has one (ttboard.demo), otherwise the
-// app's pinned copy is sent to RAM and executed into a dict, so stock boards behave
-// exactly as they will once the helper is installed.
+// The demo module comes from the firmware when it has one (ttboard.demo), or from the
+// helper's /demo.py when that is the app's current copy; otherwise the app's copy for the
+// board's SDK (helperDemoPy) is sent to RAM and executed into a dict, so stock boards
+// behave exactly as they will once the helper is installed.
 import type { BoardInfo } from './board';
 import { removeFile, writeFile } from './board';
 import type { DemoFile, Entry } from './demoFile';
 import type { FileOp } from './helper';
-import { HELPER_DEMO_PY } from './helper';
+import { helperDemoPy, helperDemoPyCurrent } from './helper';
 import { RawRepl, ReplError } from './rawRepl';
 
 const SRC_CHUNK = 2048;
 
+/** What the live functions need to know about the board. */
+export type LiveBoard = Pick<BoardInfo, 'firmware' | 'mcu' | 'demoPySha256'>;
+
+/**
+ * The module's source cut before each top-level def or class. Each piece is a complete
+ * run of statements, so the board can exec them one after another into the same dict and
+ * never holds the whole source and its compiled form at once (the RP2040's heap is small).
+ */
+export function sourcePieces(src: string): string[] {
+  const pieces: string[] = [];
+  let cur: string[] = [];
+  for (const line of src.split('\n')) {
+    if (/^(def|class) /.test(line) && cur.length) {
+      pieces.push(cur.join('\n') + '\n');
+      cur = [];
+    }
+    cur.push(line);
+  }
+  if (cur.length) pieces.push(cur.join('\n'));
+  return pieces;
+}
+
 /** Make `_tdc_demo` on the board: a dict holding the demo module's names. */
-export async function loadDemoModule(repl: RawRepl, info: Pick<BoardInfo, 'firmware'>): Promise<void> {
+export async function loadDemoModule(repl: RawRepl, info: LiveBoard): Promise<void> {
   if (info.firmware === 'custom') {
     await repl.check('import ttboard.demo\n_tdc_demo = ttboard.demo.__dict__\n');
     return;
   }
   const have = await repl.check("print('_tdc_demo' in globals())\n");
   if (have.trim() === 'True') return;
-  await repl.check('_tdc_src = []\n');
-  for (let i = 0; i < HELPER_DEMO_PY.length; i += SRC_CHUNK) {
-    await repl.check(`_tdc_src.append(${JSON.stringify(HELPER_DEMO_PY.slice(i, i + SRC_CHUNK))})\n`);
+  if (info.firmware === 'helper' && helperDemoPyCurrent(info)) {
+    // the installed helper is this same code: import it from flash rather than send it
+    await repl.check('import demo\n_tdc_demo = demo.__dict__\n', 30000);
+    return;
   }
-  await repl.check("_tdc_demo = {'__name__': 'demo'}\nexec(''.join(_tdc_src), _tdc_demo)\ndel _tdc_src\nimport gc\ngc.collect()\n", 30000);
+  await repl.check("_tdc_demo = {'__name__': 'demo'}\n");
+  for (const piece of sourcePieces(helperDemoPy(info))) {
+    await repl.check('_tdc_src = []\n');
+    for (let i = 0; i < piece.length; i += SRC_CHUNK) {
+      await repl.check(`_tdc_src.append(${JSON.stringify(piece.slice(i, i + SRC_CHUNK))})\n`);
+    }
+    await repl.check("exec(''.join(_tdc_src), _tdc_demo)\ndel _tdc_src\nimport gc\ngc.collect()\n", 30000);
+  }
 }
 
 const TT = 'from ttboard.demoboard import DemoBoard\ntt = DemoBoard.get()\nimport json\n';
 
 /** The board's verdict on a sequence: its validate() against its own project list. */
-export async function boardValidate(repl: RawRepl, info: Pick<BoardInfo, 'firmware'>, text: string): Promise<string[]> {
+export async function boardValidate(repl: RawRepl, info: LiveBoard, text: string): Promise<string[]> {
   await loadDemoModule(repl, info);
   const out = await repl.check(
     `${TT}try:\n _c = json.loads(${JSON.stringify(text)})\nexcept ValueError as e:\n _r = ([], ['not valid JSON: %s' % e])\nelse:\n _r = _tdc_demo['validate'](_c, tt.shuttle.run, tt.shuttle)\nprint('ERRS:' + json.dumps(_r[1]))\n`,
@@ -54,7 +85,7 @@ export async function stopDemo(repl: RawRepl): Promise<void> {
  * Run a sequence from RAM as tt.demo. Returns the board's errors (and does not start)
  * if it finds the sequence invalid.
  */
-export async function runFromRam(repl: RawRepl, info: Pick<BoardInfo, 'firmware'>, file: DemoFile): Promise<string[]> {
+export async function runFromRam(repl: RawRepl, info: LiveBoard, file: DemoFile): Promise<string[]> {
   const text = JSON.stringify(file);
   const errors = await boardValidate(repl, info, text);
   if (errors.length) return errors;
@@ -73,12 +104,12 @@ export async function runFromRam(repl: RawRepl, info: Pick<BoardInfo, 'firmware'
 }
 
 /** Show one design with its idle ui_in and no steps. */
-export function showOne(repl: RawRepl, info: Pick<BoardInfo, 'firmware'>, shuttle: string, entry: Entry): Promise<string[]> {
+export function showOne(repl: RawRepl, info: LiveBoard, shuttle: string, entry: Entry): Promise<string[]> {
   return runFromRam(repl, info, { version: 1, shuttle, projects: [{ ...entry, steps: [] }] });
 }
 
 /** Show one design and play its steps. */
-export function playOne(repl: RawRepl, info: Pick<BoardInfo, 'firmware'>, shuttle: string, entry: Entry): Promise<string[]> {
+export function playOne(repl: RawRepl, info: LiveBoard, shuttle: string, entry: Entry): Promise<string[]> {
   return runFromRam(repl, info, { version: 1, shuttle, projects: [entry] });
 }
 
@@ -91,7 +122,7 @@ export async function applyOps(repl: RawRepl, ops: FileOp[], progress?: (op: Fil
   }
 }
 
-/** Reboot into the RP2350's USB bootloader, for flashing a .uf2. The port goes away. */
+/** Reboot into the board's USB bootloader (RP2040 or RP2350), for flashing a .uf2. The port goes away. */
 export async function rebootToBootloader(repl: RawRepl): Promise<void> {
   await repl.exec('import machine\nmachine.bootloader()\n', 1500).catch(() => undefined);
 }

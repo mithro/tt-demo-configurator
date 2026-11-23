@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // What is on a connected board, and moving files to and from it over the raw REPL.
+import { compareVersions, Mcu, sdkMajor, STOCK_FIRMWARE } from './firmware';
 import detectPy from './py/detect.py?raw';
 import { RawRepl, ReplError } from './rawRepl';
 
@@ -10,9 +11,10 @@ export type FirmwareType = 'custom' | 'helper' | 'stock' | 'handmade';
 
 export interface BoardInfo {
   machine: string;
-  /** SDK version, e.g. "3.1.1"; null when unknown. */
+  /** The demoboard's microcontroller, from MicroPython's machine name; null if neither. */
+  mcu: Mcu | null;
+  /** SDK version, e.g. "3.1.1" or "2.0.4"; null when unknown. */
   sdk: string | null;
-  rp2350: boolean;
   shuttle: string | null;
   rom: Record<string, string> | string | null;
   isFpga: boolean;
@@ -30,26 +32,42 @@ export interface BoardInfo {
   mainStock: string | null;
   configIni: string | null;
   demoJson: string | null;
-  demoPy: string | null;
+  /** SHA-256 (hex) of /demo.py, or null if there is none: the file itself stays on the board. */
+  demoPySha256: string | null;
   vgaCycle: string | null;
   errors: string[];
 }
 
+function mcuOf(machine: string): Mcu | null {
+  if (/RP2350/i.test(machine)) return 'RP2350';
+  if (/RP2040/i.test(machine)) return 'RP2040';
+  return null;
+}
+
 /** Turn detect.py's output into BoardInfo. */
 export function parseDetect(out: string): BoardInfo {
-  const line = out.split(/\r?\n/).find((l) => l.startsWith('DETECT:'));
+  const lines = out.split(/\r?\n/);
+  const line = lines.find((l) => l.startsWith('DETECT:'));
   if (!line) throw new ReplError(`the board did not report its state: ${out.slice(0, 300)}`);
   const r = JSON.parse(line.slice('DETECT:'.length));
-  const main: string | null = r.main;
+  const files: Record<string, string | null> = {};
+  for (const l of lines) {
+    if (!l.startsWith('FILE:')) continue;
+    const [key, text] = JSON.parse(l.slice('FILE:'.length));
+    files[key] = text;
+  }
+  const file = (key: string): string | null => files[key] ?? null;
+  const main = file('main');
+  const demoPySha256: string | null = r.demo_py_sha256 ?? null;
   let firmware: FirmwareType = 'stock';
   if (r.firmware_demo) firmware = 'custom';
-  else if (r.demo_py !== null && main?.includes(HELPER_MARKER)) firmware = 'helper';
-  else if (r.vga_cycle !== null && /\bimport\s+vga_cycle\b/.test(main ?? '')) firmware = 'handmade';
+  else if (demoPySha256 !== null && main?.includes(HELPER_MARKER)) firmware = 'helper';
+  else if (file('vga_cycle') !== null && /\bimport\s+vga_cycle\b/.test(main ?? '')) firmware = 'handmade';
   const sdk: string | null = r.sdk ?? r.release ?? null;
   return {
     machine: r.machine,
+    mcu: mcuOf(r.machine ?? ''),
     sdk,
-    rp2350: /RP2350/i.test(r.machine),
     shuttle: r.shuttle,
     rom: r.rom,
     isFpga: typeof r.shuttle === 'string' && r.shuttle.toUpperCase() === 'FPGA',
@@ -61,17 +79,19 @@ export function parseDetect(out: string): BoardInfo {
     demoRunning: !!r.demo_running,
     demoErrors: r.demo_errors ?? [],
     main,
-    mainStock: r.main_stock,
-    configIni: r.config_ini,
-    demoJson: r.demo_json,
-    demoPy: r.demo_py,
-    vgaCycle: r.vga_cycle,
+    mainStock: file('main_stock'),
+    configIni: file('config_ini'),
+    demoJson: file('demo_json'),
+    demoPySha256,
+    vgaCycle: file('vga_cycle'),
     errors: r.errors ?? [],
   };
 }
 
 export async function detect(repl: RawRepl): Promise<BoardInfo> {
-  return parseDetect(await repl.check(detectPy, 30000));
+  const out = await repl.check(detectPy, 30000);
+  if (!out.split(/\r?\n/).includes('DETECT-END')) throw new ReplError('the board’s report was cut short');
+  return parseDetect(out);
 }
 
 const py = (s: string) => JSON.stringify(s); // a JSON string is a valid Python string literal
@@ -149,19 +169,37 @@ export async function renameFile(repl: RawRepl, from: string, to: string): Promi
   await repl.check(`import os\nos.rename(${py(from)},${py(to)})\n`);
 }
 
+const BOARD_NAME: Record<Mcu, string> = {
+  RP2040: 'RP2040 demoboard (TT04/05, TT06+)',
+  RP2350: 'RP2350 demoboard (Tiny Tapeout Demoboard: ETR)',
+};
+
 /**
  * Why the app can't configure this board, in words for whoever is holding it; null when it can.
  * Everything that writes to the board or runs a design on it checks this first.
+ *
+ * Supported: RP2040 demoboards on SDK 2.x (from 2.0.0) and RP2350 demoboards on SDK 3.x.
+ * An SDK version that isn't a release number (a build from source reports 0.0.0) is let
+ * through: the microcontroller still says which SDK line it must be.
  */
 export function unsupportedReason(b: BoardInfo): string | null {
   if (b.isFpga) return 'This is the FPGA breakout board. Demo sequences are only supported on boards with a Tiny Tapeout chip.';
-  if (!b.rp2350) {
-    const chip = /RP2040/i.test(b.machine) ? 'an RP2040' : `a ${b.machine || 'microcontroller this app doesn’t recognise'}`;
+  const later = 'You can still build, preview and download sequences here.';
+  if (!b.mcu) {
     return (
-      `This demoboard has ${chip}. The configurator so far only supports the RP2350 demoboard ` +
-      '(Tiny Tapeout Demoboard: ETR, firmware SDK 3.x); RP2040 boards (the TT04–TT08-era demoboards) are not supported yet. ' +
-      'You can still build, preview and download sequences here.'
+      `This board has a ${b.machine || 'microcontroller this app doesn’t recognise'}. The configurator supports the ` +
+      `Tiny Tapeout ${BOARD_NAME.RP2040} and ${BOARD_NAME.RP2350}. ${later}`
+    );
+  }
+  const fw = STOCK_FIRMWARE[b.mcu];
+  const major = sdkMajor(b.sdk);
+  if (major && (major !== fw.sdkMajor || compareVersions(b.sdk!, fw.oldest) < 0)) {
+    return (
+      `This ${BOARD_NAME[b.mcu]} runs firmware SDK ${b.sdk}; the configurator needs SDK ${fw.oldest} or later ` +
+      `(SDK ${fw.sdkMajor}.x on this board). Flash ${fw.uf2} from ${fw.url} (it replaces every file on the board: ` +
+      `save any you want first; hold the board’s BOOT button while plugging it in to get its USB drive), then reconnect. ${later}`
     );
   }
   return null;
 }
+
