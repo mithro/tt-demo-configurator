@@ -4,6 +4,8 @@
 import { Box, Button, Card, CardContent, Stack, Typography } from '@suid/material';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { clipUrls, videoInfo } from '~/lib/shuttleIndex';
+import { previewSource, PreviewSourceToggle, setPreviewSource } from './PreviewSource';
+import { SimView } from './SimView';
 import { state as s } from './state';
 
 /** What the videos project found in a design's recording, when that isn't "it moves". */
@@ -152,14 +154,30 @@ export function Preview() {
             {{ stopped: 'Play sequence', playing: 'Pause', paused: 'Resume' }[mode()]}
           </Button>
         </Stack>
-        <Show when={s.seq.projects.length} fallback={<Typography variant="body2">The sequence is empty: its designs' recorded videos play here.</Typography>}>
-        <Clip
-          shuttle={s.seq.shuttle}
-          macro={macro()}
-          paused={mode() !== 'playing'}
-          pausedLabel={mode() === 'paused' ? 'sequence paused' : 'not playing: press Play sequence, or click the clip to watch just this design'}
-          note={entry()?.steps.length ? 'Recorded with the design’s own test inputs, not this entry’s steps.' : undefined}
-        />
+        <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }}>
+          <PreviewSourceToggle />
+        </Stack>
+        <Show when={s.seq.projects.length} fallback={<Typography variant="body2">The sequence is empty: its designs' recorded videos, or simulations, play here.</Typography>}>
+        <Show
+          when={previewSource() === 'simulation'}
+          fallback={
+            <Clip
+              shuttle={s.seq.shuttle}
+              macro={macro()}
+              paused={mode() !== 'playing'}
+              pausedLabel={mode() === 'paused' ? 'sequence paused' : 'not playing: press Play sequence, or click the clip to watch just this design'}
+              note={entry()?.steps.length ? 'Recorded with the design’s own test inputs, not this entry’s steps.' : undefined}
+            />
+          }
+        >
+          <SimView
+            project={entry() ? s.projectOf(entry()!) : undefined}
+            entry={entry()}
+            running={mode() === 'playing'}
+            pausedLabel={mode() === 'paused' ? 'sequence paused' : 'not playing: press Play sequence, or click the picture to run just this design'}
+            onUseRecording={() => setPreviewSource('recording')}
+          />
+        </Show>
         <Typography variant="body2" sx={{ mt: 1 }}>
           {entry() ? `${s.projectOf(entry()!)?.title ?? `address ${entry()!.address}`} — ${(entry()!.duration_ms / 1000).toFixed(1)} s` : 'Select an entry to preview it.'}
         </Typography>
