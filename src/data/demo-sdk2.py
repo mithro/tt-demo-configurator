@@ -9,7 +9,8 @@
 #  - the RP2040 demoboards have no RP-driven LED (3.x: GPIOMapTTDBv3.RP_LED),
 #    so the error display is the 7-segment "E" alone;
 #  - boot_button_held() is left out: it reads the DBv3 pin map, and the
-#    helper's main.py never calls it (it passes button_held=False).
+#    helper's main.py never calls it (it passes button_held=False). The
+#    docstring and log message that mention the button say so instead.
 '''
 Created on Nov 20, 2026
 
@@ -239,7 +240,8 @@ def autostart(tt, button_held: bool, ini_path: str = IniPath,
               error_display=None):
     '''
         Build tt.demo and start it if config.ini's "demo" setting, flipped
-        by the boot button, says so.  The sequence is user_path if it
+        when button_held is true, says so (the helper passes False: there
+        is no boot-button check on SDK 2.x).  The sequence is user_path if it
         exists, otherwise the chip's bundled one.  If that is missing or
         invalid, every problem is logged and the error display is shown
         instead.  Always returns the DemoRunner.
@@ -253,7 +255,7 @@ def autostart(tt, button_held: bool, ini_path: str = IniPath,
     runner = DemoRunner(tt, [], path=path, error_display=error_display)
     if not on:
         if button_held:
-            log.info('Demo: reset button held, skipping the demo for this boot')
+            log.info('Demo: button_held, skipping the demo for this boot')
         return runner
     if not _exists(path):
         runner.fail([f'no demo sequence: neither {user_path} nor {shuttle_path} exists'])

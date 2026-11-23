@@ -32,8 +32,15 @@ sub("""# Pinned copy of ttboard/demo.py from mithro/tt-micropython-firmware
 #  - the RP2040 demoboards have no RP-driven LED (3.x: GPIOMapTTDBv3.RP_LED),
 #    so the error display is the 7-segment "E" alone;
 #  - boot_button_held() is left out: it reads the DBv3 pin map, and the
-#    helper's main.py never calls it (it passes button_held=False).
+#    helper's main.py never calls it (it passes button_held=False). The
+#    docstring and log message that mention the button say so instead.
 """)
+sub("""        Build tt.demo and start it if config.ini's "demo" setting, flipped
+        by the boot button, says so.""", """        Build tt.demo and start it if config.ini's "demo" setting, flipped
+        when button_held is true, says so (the helper passes False: there
+        is no boot-button check on SDK 2.x).""")
+sub("""            log.info('Demo: reset button held, skipping the demo for this boot')""",
+    """            log.info('Demo: button_held, skipping the demo for this boot')""")
 sub("""Turning it on: "demo = yes" in config.ini's [DEFAULT] section.  Holding
 the project reset button while the board powers up flips that setting
 for one boot (see boot_button_held() and main.py).
