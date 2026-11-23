@@ -39,10 +39,20 @@ export function parseInfoYaml(text: string): InfoYaml {
   let inProject = false;
   let projectIndent = -1;
   let listIndent = -1; // indent of the source_files key while reading its block list
+  let flow: string | null = null; // a [flow, list] read so far, until its "]"
+  const flowItems = (s: string) => s.replace(/^\[|\]$/g, '').split(',').map(unquote).filter(Boolean);
   for (const raw of lines) {
     if (!raw.trim()) continue;
     const indent = raw.length - raw.trimStart().length;
     const line = raw.trim();
+    if (flow !== null) {
+      flow += ' ' + line;
+      if (line.includes(']')) {
+        out.sourceFiles.push(...flowItems(flow.slice(0, flow.indexOf(']') + 1)));
+        flow = null;
+      }
+      continue;
+    }
     if (indent === 0) {
       inProject = /^project\s*:/.test(line);
       listIndent = -1;
@@ -64,9 +74,9 @@ export function parseInfoYaml(text: string): InfoYaml {
     const [, key, value] = m;
     if (key === 'source_files') {
       const v = value.trim();
-      if (v.startsWith('[')) {
-        out.sourceFiles.push(...v.replace(/^\[|\]$/g, '').split(',').map(unquote).filter(Boolean));
-      } else listIndent = indent;
+      if (v.startsWith('[') && v.includes(']')) out.sourceFiles.push(...flowItems(v.slice(0, v.indexOf(']') + 1)));
+      else if (v.startsWith('[')) flow = v;
+      else listIndent = indent;
     } else if (key === 'top_module') out.topModule = unquote(value) || undefined;
     else if (key === 'language') out.language = unquote(value) || undefined;
   }

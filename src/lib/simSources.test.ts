@@ -19,6 +19,10 @@ describe('parseInfoYaml', () => {
     const y = 'project:\n  top_module: tt_um_x # top\n  source_files: [ "a.v", b.sv ]\npinout:\n  ui[0]: "x"\n';
     expect(parseInfoYaml(y)).toEqual({ sourceFiles: ['a.v', 'b.sv'], topModule: 'tt_um_x' });
   });
+  it('reads a flow list spread over several lines', () => {
+    const y = 'project:\n  source_files: [\n    "a.v",\n    b.v, c.v\n  ]\n  top_module: "tt_um_x"\n';
+    expect(parseInfoYaml(y)).toEqual({ sourceFiles: ['a.v', 'b.v', 'c.v'], topModule: 'tt_um_x' });
+  });
   it('stops the list at the next key and ignores lists outside project', () => {
     const y = 'documentation:\n  source_files:\n    - nope.v\nproject:\n  source_files:\n  - a.v # main\n  - "dir/b.v"\n  language: "Amaranth"\n';
     expect(parseInfoYaml(y)).toEqual({ sourceFiles: ['a.v', 'dir/b.v'], language: 'Amaranth' });
