@@ -23,6 +23,8 @@ import { showOne } from '~/lib/live';
 import { boardUsable } from './actions';
 import { clipUrls, pmodsOf, Project, projectKey, videoInfo } from '~/lib/shuttleIndex';
 import { Clip } from './Preview';
+import { previewSource, PreviewSourceToggle, setPreviewSource } from './PreviewSource';
+import { SimView } from './SimView';
 import { state as s, VGA_CLOCK_HZ } from './state';
 
 type Filter = 'tiny-vga' | 'gamepad' | 'all';
@@ -189,7 +191,17 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
                 {proj().author} · address {projectKey(proj())} · {proj().macro}
                 <Show when={props.inSeq.has(projectKey(proj()))}> · already in the sequence</Show>
               </Typography>
-              <Clip shuttle={s.seq.shuttle} macro={proj().macro} />
+              <Stack direction="row" sx={{ justifyContent: 'flex-end', mb: 1 }}>
+                <PreviewSourceToggle />
+              </Stack>
+              <Show when={previewSource() === 'simulation'} fallback={<Clip shuttle={s.seq.shuttle} macro={proj().macro} />}>
+                <SimView
+                  project={proj()}
+                  entry={{ ui_in: 0, steps: [], clock_hz: proj().clock_hz || VGA_CLOCK_HZ }}
+                  running={true}
+                  onUseRecording={() => setPreviewSource('recording')}
+                />
+              </Show>
             </DialogContent>
             <DialogActions>
               <Button onClick={close}>Close</Button>
