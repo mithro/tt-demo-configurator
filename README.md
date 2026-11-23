@@ -12,6 +12,11 @@ talks to the board over WebSerial).
 - Set each design's time on screen, clock, starting `ui_in`, and a fixed input script.
 - Preview the sequence without a board, try it on a board from RAM (nothing written), then
   make it permanent, turn it off, or put the board back to exactly stock.
+- Or simulate it: the preview's **Simulation** switch fetches each design's Verilog from
+  its repository (at the commit on the chip), compiles it in the browser with the
+  [VGA Playground](https://github.com/TinyTapeout/vga-playground)'s Verilator/WebAssembly
+  engine, and draws what a 640x480 monitor would show, with the entry's `ui_in` and steps
+  (usually slower than real time; the preview says how fast it runs).
 - Works with the stock firmware (it installs a small helper) and with the demo-mode firmware.
 - Ready-made sequences for the four boards shown at the Shenzhen open-silicon meetup (2026-11).
 
@@ -63,8 +68,21 @@ Data refresh scripts:
 - `scripts/make-shenzhen-demos.py`: the ready-made sequences.
 - `scripts/check-micropython.py`: compile the board-side Python with `mpy-cross`.
 
+Simulator:
+
+- `npm ci` runs `scripts/fetch-sim-engine.mjs`, which downloads the VGA Playground's
+  simulator into `src/vendor/vga-playground/` (pinned commit, SHA-256 checked; see
+  `src/vendor/README.md`).
+- `npx vite-node scripts/sim-survey.ts -- ttsky25a tt08 ...`: how many of each shuttle's
+  Tiny VGA designs compile and produce a picture.
+- `scripts/sim-preview-check.py`: screenshots of the simulated preview in Chromium
+  (Playwright; see its docstring).
+
 Pushes to `main` are deployed to GitHub Pages by `.github/workflows/pages.yml`.
 
 ## Licence
 
-Apache-2.0, except `src/data/demo.py` (LGPL-2.1, from the firmware).
+Apache-2.0, except `src/data/demo.py` (LGPL-2.1, from the firmware) and the simulator
+engine fetched into `src/vendor/vga-playground/` (GPL-3.0; Verilator itself is
+LGPL-3.0/Artistic-2.0). The built simulator worker bundles that GPL-3.0 code: see
+`src/vendor/README.md`.
