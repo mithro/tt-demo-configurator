@@ -118,6 +118,19 @@ with sync_playwright() as p:
     preview.screenshot(path=str(out / 'next-entry.png'))
     preview.get_by_role('button', name='Stop').click()
 
+    # 3. a design the engine can't model: the failure, with the way back to the recording
+    for title, name in [('Tiny Connect Four', 'failure'), ('ShadyPong', 'shadypong')]:
+        print(f'== {title}, sequence stopped')
+        segment(title).click()
+        t0 = time.time()
+        while time.time() - t0 < 180:
+            caps = ' | '.join(caption(preview))
+            if "Couldn't simulate" in caps or 'not playing' in caps:
+                break
+            time.sleep(0.5)
+        print(f'  after {time.time() - t0:.1f}s: {caps}')
+        preview.screenshot(path=str(out / f'{name}.png'))
+
     # the toggle back to Recording
     preview.get_by_role('button', name='Recording').click()
     time.sleep(1)
