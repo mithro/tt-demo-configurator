@@ -48,7 +48,13 @@ describe('addressNote', () => {
 describe('matchKnown', () => {
   const order = ['ttsky26c', 'ttsky25b', 'ttsky25a', 'tt09'];
   const shuttles: Record<string, Project[]> = {
-    ttsky26c: [chipProject({ address: 2, clock_hz: 0, danger_level: 'high' })],
+    // tt_um_vga_pattern is here too, but with no recording; the factory test is in an older shuttle too
+    ttsky26c: [
+      chipProject({ address: 2, clock_hz: 0, danger_level: 'high' }),
+      chipProject({ macro: 'tt_um_counter_7seg', title: '7 segment counter', address: 10 }),
+      chipProject({ macro: 'tt_um_vga_pattern', title: 'A newer VGA thing, no clip', address: 11 }),
+    ],
+    ttsky25a: [chipProject({ title: 'An older Factory Test', address: 99 })],
     tt09: [chipProject({ macro: 'tt_um_vga_pattern', title: 'A VGA thing', address: 300 })],
   };
   const loaded: string[] = [];
@@ -83,6 +89,8 @@ describe('matchKnown', () => {
     expect(errors).toEqual([]);
     expect(out.find((p) => p.macro === 'custom')).toEqual(fpgaProjects(designs)[0]);
     expect(mediaShuttle('FPGA', out[0])).toBe('FPGA');
+    // two bitstreams (the counter and the factory test) come from ttsky26c: its index is loaded once
+    expect(out.filter((p) => p.known?.shuttle === 'ttsky26c').map((p) => p.macro)).toEqual(['tt_um_counter_7seg', 'tt_um_factory_test']);
     expect(loaded.sort()).toEqual(['tt09', 'ttsky26c']);
   });
   it("with the app's own data, matches fpga-4's factory test and nothing else", async () => {
@@ -94,6 +102,7 @@ describe('matchKnown', () => {
     const { projects, errors } = await matchKnown(fpgaProjects(designs), { ...deps, loadShuttle: async () => Promise.reject(new Error('HTTP 503')) });
     expect(projects).toEqual(fpgaProjects(designs));
     expect(errors).toEqual([
+      "couldn't load the ttsky26c project list to name tt_um_counter_7seg: Error: HTTP 503",
       "couldn't load the ttsky26c project list to name tt_um_factory_test: Error: HTTP 503",
       "couldn't load the tt09 project list to name tt_um_vga_pattern: Error: HTTP 503",
     ]);

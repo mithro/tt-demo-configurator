@@ -209,7 +209,8 @@ function makeState() {
     if (!info?.shuttle || info.shuttle === 'unknown' || unsupportedReason(info)) return;
     // an empty sequence follows the board's chip; a sequence being edited is left alone,
     // but an FPGA sequence gets this board's designs (they are only known from a board)
-    if (!seq.projects.length) await chooseShuttle(info.shuttle);
+    // an FPGA board's designs are its own bitstreams: always re-read them, as another board numbers them differently
+    if (!seq.projects.length) await chooseShuttle(info.shuttle, info.isFpga);
     else if (info.isFpga && seq.shuttle === FPGA_SHUTTLE) await chooseShuttle(FPGA_SHUTTLE, true);
   }
 
