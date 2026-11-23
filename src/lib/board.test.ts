@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PythonBoard, startPythonBoard } from '~/testing/pythonBoard';
 import { stubTtboard } from '~/testing/stubTtboard';
-import { detect, HELPER_MARKER, readFile, removeFile, writeFile } from './board';
+import { detect, HELPER_MARKER, parseDetect, readFile, removeFile, unsupportedReason, writeFile } from './board';
 import { RawRepl } from './rawRepl';
 
 let board: PythonBoard;
@@ -70,5 +70,22 @@ describe('detect', () => {
   it('sees the demo-mode firmware', async () => {
     await repl.check("import sys, types\nsys.modules['ttboard.demo'] = types.ModuleType('ttboard.demo')\n");
     expect((await detect(repl)).firmware).toBe('custom');
+  });
+});
+
+describe('unsupportedReason', () => {
+  const info = (machine: string, shuttle = 'tt07') =>
+    parseDetect('DETECT:' + JSON.stringify({ machine, shuttle, sdk: '3.1.1', projects: 10, main: null, demo_py: null, vga_cycle: null }));
+  it('accepts RP2350 boards', () => {
+    expect(unsupportedReason(info('Tiny Tapeout Demoboard ETR with RP2350'))).toBeNull();
+  });
+  it('explains an RP2040 board in plain words', () => {
+    const why = unsupportedReason(info('Raspberry Pi Pico with RP2040'));
+    expect(why).toContain('has an RP2040');
+    expect(why).toContain('Demoboard: ETR');
+    expect(why).toContain('still build, preview and download');
+  });
+  it('refuses the FPGA board', () => {
+    expect(unsupportedReason(info('Tiny Tapeout Demoboard ETR with RP2350', 'FPGA'))).toContain('FPGA breakout');
   });
 });

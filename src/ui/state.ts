@@ -28,6 +28,8 @@ function makeState() {
   const [busy, setBusy] = createSignal<string | null>(null);
   const [boardErrors, setBoardErrors] = createSignal<string[] | null>(null);
   const [ramRunning, setRamRunning] = createSignal(false);
+  /** Why the last Connect didn't get a board, for the Board panel's troubleshooting help. */
+  const [connectProblem, setConnectProblem] = createSignal<'none-chosen' | 'open-failed' | 'no-repl' | null>(null);
   const [log, setLog] = createSignal<LogLine[]>([]);
 
   const say = (text: string, kind: LogLine['kind'] = 'info') =>
@@ -144,22 +146,41 @@ function makeState() {
     let port: SerialPort;
     try {
       port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x2e8a }] });
-    } catch {
-      return; // the user closed the chooser
+    } catch (e) {
+      if ((e as Error).name === 'SecurityError') {
+        say('the browser blocked serial access on this page (a site setting or policy): allow “Serial ports” for this site', 'error');
+        return;
+      }
+      // Chrome's chooser was closed without picking a port: either it was cancelled, or it
+      // listed nothing ("No compatible devices found"); the Board panel says what to check.
+      setConnectProblem('none-chosen');
+      say('no board was chosen: if the list was empty, see the checks in the Board panel', 'error');
+      return;
     }
     const transport = new SerialTransport(port);
     try {
       setBusy('connecting');
-      await transport.open();
+      try {
+        await transport.open();
+      } catch (e) {
+        setConnectProblem('open-failed');
+        say(`couldn't open the board's serial port (${(e as Error).message ?? e}): something else probably has it open, or you lack permission; see the Board panel`, 'error');
+        await transport.close();
+        return;
+      }
       const r = new RawRepl(transport);
-      await r.enter();
+      try {
+        await r.enter();
+      } catch (e) {
+        setConnectProblem('no-repl');
+        say(`the board didn't answer as MicroPython (${(e as Error).message ?? e}); see the Board panel`, 'error');
+        await transport.close();
+        return;
+      }
       setRepl(r);
+      setConnectProblem(null);
       port.addEventListener('disconnect', () => dropped());
       say('connected', 'ok');
-    } catch (e) {
-      say(`couldn't connect: ${(e as Error).message ?? e} (is the commander app or another tab using the board?)`, 'error');
-      await transport.close();
-      return;
     } finally {
       setBusy(null);
     }
@@ -188,7 +209,7 @@ function makeState() {
 
   return {
     seq, setSeq, selected, setSelected, projects, projectsFor, projectsError, shuttles, ensureShuttles,
-    board, setBoard, repl, busy, setBusy, boardErrors, setBoardErrors, ramRunning, setRamRunning, log, say,
+    board, setBoard, repl, busy, setBusy, boardErrors, setBoardErrors, ramRunning, setRamRunning, log, say, connectProblem,
     projectOf, lookup, errors, text, chooseShuttle, loadFile, addProject, updateEntry, removeEntry, moveEntry,
     job, refreshBoard, connect, disconnect,
   };

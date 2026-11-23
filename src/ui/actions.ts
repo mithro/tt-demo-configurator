@@ -2,6 +2,7 @@
 // What the board buttons do. Every write is shown to the user first (confirmOps), and
 // everything that would make a board show the error pattern is refused before writing.
 import { createSignal } from 'solid-js';
+import { unsupportedReason } from '~/lib/board';
 import { DemoFile, ENTRY_FIELDS, Entry, formatDemo, Step } from '~/lib/demoFile';
 import { importHandmade } from '~/lib/handmade';
 import {
@@ -51,8 +52,8 @@ export function blockers(): string[] {
   const b = s.board();
   if (!b) return ['no board connected'];
   const out: string[] = [];
-  if (!b.rp2350) out.push('this board is not an RP2350 (TTDBv3) board, which v1 needs');
-  if (b.isFpga) out.push('demo sequences on the FPGA board are not supported yet');
+  const unsupported = unsupportedReason(b);
+  if (unsupported) return [unsupported];
   if (!b.shuttle || b.shuttle === 'unknown') out.push("the chip couldn't be identified: check it is seated properly");
   if (b.projects === 0) out.push(`the firmware has no project list for ${b.shuttle}: upgrade the firmware`);
   if (b.shuttle && s.seq.shuttle !== b.shuttle) out.push(`the sequence is for ${s.seq.shuttle || '(no shuttle)'} but the chip is ${b.shuttle}`);
@@ -73,7 +74,22 @@ async function checkOnBoard(): Promise<boolean> {
   return errs.length === 0;
 }
 
+/** A board is connected and the app can configure it. */
+export function boardUsable(): boolean {
+  const b = s.board();
+  return !!b && !unsupportedReason(b);
+}
+
+/** False (and says why) when the connected board isn't one this app can configure. */
+function supported(): boolean {
+  const b = s.board();
+  const why = b && unsupportedReason(b);
+  if (why) s.say(why, 'error');
+  return !!b && !why;
+}
+
 async function apply(title: string, ops: FileOp[], warnings: string[] = []): Promise<boolean> {
+  if (!supported()) return false;
   if (!(await confirmOps(title, ops, warnings))) return false;
   const done = await s.job(title.toLowerCase(), async (r) => {
     await applyOps(r, ops, (op) => s.say(`${op.op === 'write' ? 'writing' : 'deleting'} ${op.path}`));
@@ -111,7 +127,7 @@ export async function testInRam() {
 
 export async function previewEntry(i: number, withSteps: boolean) {
   const b = s.board();
-  if (!b) return;
+  if (!b || !supported()) return;
   const e: Entry = JSON.parse(JSON.stringify(s.seq.projects[i]));
   const errs = await s.job(withSteps ? 'playing one design' : 'showing one design', (r) =>
     (withSteps ? playOne : showOne)(r, b, s.seq.shuttle, e),
@@ -139,15 +155,18 @@ export async function makePermanent() {
 }
 
 export async function installHelper() {
+  if (!supported()) return;
   const ops = plan(() => planInstallHelper(s.board()!));
   if (ops) await apply('Install the demo helper', ops);
 }
 
 export async function turnOff() {
+  if (!supported()) return;
   await apply('Turn demo mode off', planTurnOff(s.board()!));
 }
 
 export async function resetToStock() {
+  if (!supported()) return;
   const b = s.board()!;
   const ops = plan(() => planResetToStock(b));
   if (ops) await apply('Reset to stock', ops, stockWarnings(b, ops));
@@ -171,6 +190,7 @@ export async function reboot() {
 }
 
 export async function bootloader() {
+  if (!supported()) return;
   backupBoardFiles();
   const r = s.repl();
   if (!r) return;
@@ -267,6 +287,7 @@ export function openText(text: string, where: string): boolean {
 }
 
 export async function importFromHandmade() {
+  if (!supported()) return;
   const b = s.board();
   if (!b?.vgaCycle || !b.shuttle) return;
   let projects;

@@ -20,6 +20,7 @@ import {
 } from '@suid/material';
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { showOne } from '~/lib/live';
+import { boardUsable } from './actions';
 import { clipUrls, pmodsOf, Project, projectKey, videoInfo } from '~/lib/shuttleIndex';
 import { Clip } from './Preview';
 import { state as s, VGA_CLOCK_HZ } from './state';
@@ -162,7 +163,7 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
   const onBoard = () => {
     const proj = p();
     const b = s.board();
-    if (!proj || !b) return;
+    if (!proj || !b || !boardUsable()) return;
     void s
       .job('showing on the board', (r) =>
         showOne(r, b, s.seq.shuttle, { address: proj.address, subtile: proj.subtile, duration_ms: 15000, clock_hz: proj.clock_hz || VGA_CLOCK_HZ, ui_in: 0, steps: [] }),
@@ -195,7 +196,7 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
               <Button onClick={() => props.setIndex(Math.max(0, (props.index ?? 0) - 1))} disabled={!props.index}>
                 Back
               </Button>
-              <Show when={s.board()}>
+              <Show when={boardUsable()}>
                 <Button onClick={onBoard}>Show on the board</Button>
               </Show>
               <span style={{ 'flex-grow': 1 }} />

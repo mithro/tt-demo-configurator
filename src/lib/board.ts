@@ -148,3 +148,20 @@ export async function removeFile(repl: RawRepl, path: string): Promise<void> {
 export async function renameFile(repl: RawRepl, from: string, to: string): Promise<void> {
   await repl.check(`import os\nos.rename(${py(from)},${py(to)})\n`);
 }
+
+/**
+ * Why the app can't configure this board, in words for whoever is holding it; null when it can.
+ * Everything that writes to the board or runs a design on it checks this first.
+ */
+export function unsupportedReason(b: BoardInfo): string | null {
+  if (b.isFpga) return 'This is the FPGA breakout board. Demo sequences are only supported on boards with a Tiny Tapeout chip.';
+  if (!b.rp2350) {
+    const chip = /RP2040/i.test(b.machine) ? 'an RP2040' : `a ${b.machine || 'microcontroller this app doesn’t recognise'}`;
+    return (
+      `This demoboard has ${chip}. The configurator so far only supports the RP2350 demoboard ` +
+      '(Tiny Tapeout Demoboard: ETR, firmware SDK 3.x); RP2040 boards (the TT04–TT08-era demoboards) are not supported yet. ' +
+      'You can still build, preview and download sequences here.'
+    );
+  }
+  return null;
+}

@@ -99,7 +99,7 @@ function EntryEditor(props: { index: number }) {
               {p() ? ` · ${p()!.macro}` : ''}
             </span>
           </Typography>
-          <Show when={s.board()}>
+          <Show when={act.boardUsable()}>
             <Button size="small" onClick={() => act.previewEntry(props.index, false)} disabled={s.busy() !== null}>
               Show on board
             </Button>
