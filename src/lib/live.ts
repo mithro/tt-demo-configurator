@@ -52,13 +52,21 @@ export async function loadDemoModule(repl: RawRepl, info: LiveBoard): Promise<vo
     await repl.check('import demo\n_tdc_demo = demo.__dict__\n', 30000);
     return;
   }
-  await repl.check("_tdc_demo = {'__name__': 'demo'}\n");
-  for (const piece of sourcePieces(helperDemoPy(info))) {
-    await repl.check('_tdc_src = []\n');
-    for (let i = 0; i < piece.length; i += SRC_CHUNK) {
-      await repl.check(`_tdc_src.append(${JSON.stringify(piece.slice(i, i + SRC_CHUNK))})\n`);
+  // built in _tdc_part and only then named _tdc_demo, so a piece that fails (a MemoryError
+  // on the RP2040's heap, a serial timeout) never leaves a half-built module behind
+  try {
+    await repl.check("_tdc_part = {'__name__': 'demo'}\n");
+    for (const piece of sourcePieces(helperDemoPy(info))) {
+      await repl.check('_tdc_src = []\n');
+      for (let i = 0; i < piece.length; i += SRC_CHUNK) {
+        await repl.check(`_tdc_src.append(${JSON.stringify(piece.slice(i, i + SRC_CHUNK))})\n`);
+      }
+      await repl.check("exec(''.join(_tdc_src), _tdc_part)\ndel _tdc_src\nimport gc\ngc.collect()\n", 30000);
     }
-    await repl.check("exec(''.join(_tdc_src), _tdc_demo)\ndel _tdc_src\nimport gc\ngc.collect()\n", 30000);
+    await repl.check('_tdc_demo = _tdc_part\ndel _tdc_part\n');
+  } catch (e) {
+    await repl.check("for _n in ('_tdc_part', '_tdc_src'):\n globals().pop(_n, None)\nimport gc\ngc.collect()\n").catch(() => undefined);
+    throw e;
   }
 }
 

@@ -53,6 +53,31 @@ describe('runFromRam', () => {
   });
 });
 
+describe('loading the helper into RAM', () => {
+  let b3: PythonBoard;
+  let r3: RawRepl;
+  beforeAll(async () => {
+    b3 = startPythonBoard();
+    r3 = new RawRepl(b3.transport, async () => undefined);
+    await r3.enter();
+    await r3.check(stubTtboard({ index }));
+  });
+  afterAll(() => b3.stop());
+  it('leaves no half-built module when a piece fails, so the next try starts over', async () => {
+    // the third piece runs out of memory, as it could on an RP2040
+    await r3.check(
+      "import builtins\n_calls = [0]\ndef exec(src, g=None):\n _calls[0] += 1\n if _calls[0] == 3: raise MemoryError('memory allocation failed')\n return builtins.exec(src, g)\n",
+    );
+    await expect(boardValidate(r3, stock, '{}')).rejects.toThrow(/MemoryError/);
+    expect((await r3.check("print('_tdc_demo' in globals(), '_tdc_part' in globals(), '_tdc_src' in globals())\n")).trim()).toBe(
+      'False False False',
+    );
+    await r3.check('del exec\n');
+    const text = readFileSync(path.join(FIX, 'bad', 'lookup.json'), 'utf8');
+    expect(await boardValidate(r3, stock, text)).toEqual(JSON.parse(readFileSync(path.join(FIX, 'bad', 'lookup.errors.json'), 'utf8')));
+  });
+});
+
 describe('sourcePieces', () => {
   it('cuts each helper before its top-level defs and classes, losing nothing', () => {
     for (const src of Object.values(HELPER_DEMO_PY)) {
