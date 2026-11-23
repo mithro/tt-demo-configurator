@@ -99,9 +99,29 @@ export function includesOf(src: string): string[] {
   return [...stripVerilogComments(src).matchAll(/`include\s+"([^"]+)"/g)].map((m) => m[1]);
 }
 
+/**
+ * Files a source may $readmem: names given to $readmem directly, and, when it uses
+ * $readmem at all, string literals that look like data files (names are often parameters).
+ */
 export function readmemsOf(src: string): string[] {
-  return [...stripVerilogComments(src).matchAll(/\$readmem[hb]\s*\(\s*"([^"]+)"/g)].map((m) => m[1]);
+  const s = stripVerilogComments(src);
+  if (!/\$readmem[hb]/.test(s)) return [];
+  const direct = [...s.matchAll(/\$readmem[hb]\s*\(\s*"([^"]+)"/g)].map((m) => m[1]);
+  const literals = [...s.matchAll(/"([^"\s]+\.(?:hex|mem|bin|txt|dat|rom))"/gi)].map((m) => m[1]);
+  return [...new Set([...direct, ...literals])];
 }
+
+/**
+ * Verilator 4.205 (the engine's) stops on lint codes it doesn't know, which newer
+ * Verilator added (UNUSEDSIGNAL, WIDTHTRUNC, ...). The simulator doesn't lint, so drop the
+ * `verilator lint_off/lint_on` comments altogether.
+ */
+export function dropLintDirectives(src: string): string {
+  return src.replace(/\/\*\s*verilator\s+lint_\w+[^*]*\*\//g, '').replace(/\/\/\s*verilator\s+lint_\w+.*$/gm, '');
+}
+
+/** Verilator configuration (.vlt) is lint waivers here: not needed to simulate. */
+const isVerilatorConfig = (f: string) => /\.vlt$/i.test(f);
 
 export interface DesignSources {
   /** Verilog/SystemVerilog sources and headers, by path relative to src/. */
@@ -117,6 +137,51 @@ export class SourceError extends Error {}
 
 type Fetch = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
+/** "git@github.com:o/r.git" or "https://github.com/o/r(.git)" to "https://github.com/o/r". */
+export function githubRepoUrl(url: string): string | null {
+  const m = /^(?:https?:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.trim());
+  return m ? `https://github.com/${m[1]}/${m[2]}` : null;
+}
+
+/**
+ * raw.githubusercontent.com doesn't follow git submodules. For the directories the missing
+ * files are in, ask the GitHub API (60 requests an hour without a token) whether one is a
+ * submodule, and record where it points. Returns true if any were found.
+ */
+async function findSubmodules(repo: string, commit: string, missing: string[], found: Map<string, [string, string]>, fetchFn: Fetch): Promise<boolean> {
+  const m = /^https?:\/\/github\.com\/([^/]+)\/([^/#?]+?)(?:\.git)?\/?$/.exec(repo.trim());
+  if (!m) return false;
+  const dirs = new Set<string>();
+  for (const f of missing) {
+    const p = normPath(`src/${f}`);
+    const parts = p?.split('/') ?? [];
+    // src/<dir>/..., and the repo's own top level for paths like ../<dir>/...
+    for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
+  }
+  let any = false;
+  for (const dir of [...dirs].sort((a, b) => a.length - b.length)) {
+    if ([...found.keys()].some((k) => dir === k || dir.startsWith(k + '/'))) continue;
+    let r;
+    try {
+      r = await fetchFn(`https://api.github.com/repos/${m[1]}/${m[2]}/contents/${dir}?ref=${commit}`);
+    } catch {
+      return any;
+    }
+    if (!r.ok) continue;
+    try {
+      const j = JSON.parse(await r.text());
+      const url = j && !Array.isArray(j) && j.type === 'submodule' ? githubRepoUrl(String(j.submodule_git_url ?? '')) : null;
+      if (url && typeof j.sha === 'string') {
+        found.set(dir, [url, j.sha]);
+        any = true;
+      }
+    } catch {
+      // not JSON: ignore
+    }
+  }
+  return any;
+}
+
 /** Fetch everything the design needs to compile. Throws SourceError with a readable reason. */
 export async function fetchDesignSources(
   d: { repo?: string; commit?: string; macro: string },
@@ -125,10 +190,12 @@ export async function fetchDesignSources(
   if (!d.repo || !d.commit) throw new SourceError('the index has no repository and commit for this design');
   const repo = d.repo;
   const commit = d.commit;
-  const get = async (path: string): Promise<string | null> => {
+  /** git submodules found so far: path in the repo -> [repo URL, commit] */
+  const submodules = new Map<string, [string, string]>();
+  const fetchText = async (url: string, path: string): Promise<string | null> => {
     let r;
     try {
-      r = await fetchFn(rawUrl(repo, commit, path));
+      r = await fetchFn(url);
     } catch (e) {
       throw new SourceError(`couldn't fetch ${path}: ${(e as Error).message}`);
     }
@@ -136,22 +203,32 @@ export async function fetchDesignSources(
     if (!r.ok) throw new SourceError(`couldn't fetch ${path}: HTTP ${r.status}`);
     return r.text();
   };
+  const get = async (path: string): Promise<string | null> => {
+    for (const [dir, [subRepo, subCommit]] of submodules)
+      if (path.startsWith(dir + '/')) return fetchText(rawUrl(subRepo, subCommit, path.slice(dir.length + 1)), path);
+    return fetchText(rawUrl(repo, commit, path), path);
+  };
   const info = await get('info.yaml');
   if (info === null) throw new SourceError(`no info.yaml in ${repo} at ${commit.slice(0, 7)}`);
   const meta = parseInfoYaml(info);
-  if (!meta.sourceFiles.length) throw new SourceError('info.yaml lists no source_files');
+  const listed = meta.sourceFiles.filter((f) => !isVerilatorConfig(f));
+  if (!listed.length) throw new SourceError('info.yaml lists no source_files');
 
-  const sources: Record<string, string> = {};
-  const missing: string[] = [];
-  await Promise.all(
-    meta.sourceFiles.map(async (f) => {
-      const p = normPath(f);
-      const text = p === null ? null : await get(`src/${p}`);
-      if (text === null || p === null) missing.push(f);
-      else sources[p] = text;
-    }),
-  );
+  // in the listed order: Verilator reads them in turn, and `defines carry from file to file
+  const fetchListed = () =>
+    Promise.all(
+      listed.map(async (f) => {
+        const p = normPath(f);
+        return [f, p, p === null ? null : await get(`src/${p}`)] as const;
+      }),
+    );
+  let got = await fetchListed();
+  const missingOf = () => got.filter(([, , t]) => t === null).map(([f]) => f);
+  if (missingOf().length && (await findSubmodules(repo, commit, missingOf(), submodules, fetchFn))) got = await fetchListed();
+  const missing = missingOf();
   if (missing.length) throw new SourceError(`missing source file${missing.length > 1 ? 's' : ''} ${missing.sort().join(', ')}`);
+  const sources: Record<string, string> = {};
+  for (const [, p, t] of got) sources[p!] = t!;
 
   // `include files: relative to the including file's directory, or to src/ (-Isrc/)
   const seen = new Set(Object.keys(sources));
@@ -193,5 +270,6 @@ export async function fetchDesignSources(
       }
     }),
   );
+  for (const k of Object.keys(sources)) sources[k] = dropLintDirectives(sources[k]);
   return { sources, dataFiles, top: meta.topModule ?? d.macro, language: meta.language };
 }

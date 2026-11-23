@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fetchDesignSources, includesOf, normPath, parseInfoYaml, rawUrl, readmemsOf, SourceError } from './simSources';
+import { dropLintDirectives, fetchDesignSources, githubRepoUrl, includesOf, normPath, parseInfoYaml, rawUrl, readmemsOf, SourceError } from './simSources';
 
 const F = path.resolve(__dirname, '../../test/fixtures/sim');
 const crossy = readFileSync(path.join(F, 'crossyroad-info.yaml'), 'utf8');
@@ -39,6 +39,17 @@ describe('paths', () => {
     const v = '`include "defs.vh"\n// `include "old.vh"\ninitial $readmemh("rom.hex", mem);\n/* $readmemb("x.bin", m) */';
     expect(includesOf(v)).toEqual(['defs.vh']);
     expect(readmemsOf(v)).toEqual(['rom.hex']);
+    expect(readmemsOf('parameter F = "../src/logo.hex";\ninitial $readmemh(F, rom);')).toEqual(['../src/logo.hex']);
+    expect(readmemsOf('parameter F = "../src/logo.hex";')).toEqual([]);
+  });
+  it('drops verilator lint comments, which the old Verilator stops on', () => {
+    const v = '/*verilator lint_off UNUSEDSIGNAL*/\nwire a; // verilator lint_on WIDTHTRUNC\n/* keep */';
+    expect(dropLintDirectives(v)).toBe('\nwire a; \n/* keep */');
+  });
+  it('reads GitHub repository URLs', () => {
+    expect(githubRepoUrl('git@github.com:x/y.git')).toBe('https://github.com/x/y');
+    expect(githubRepoUrl('https://github.com/x/y')).toBe('https://github.com/x/y');
+    expect(githubRepoUrl('https://gitlab.com/x/y')).toBeNull();
   });
 });
 
@@ -75,6 +86,19 @@ describe('fetchDesignSources', () => {
       return { ok: t !== undefined, status: t === undefined ? 404 : 200, text: async () => t ?? '' };
     };
     await expect(fetchDesignSources({ repo, commit: 'c0ffee', macro: 'm' }, fake2)).rejects.toThrow('missing source file gone.v');
+  });
+
+  it('follows a git submodule through the GitHub API', async () => {
+    const f3: Record<string, string> = {
+      'https://raw.githubusercontent.com/o/r/c0ffee/info.yaml': 'project:\n  source_files:\n    - top.v\n    - Sub/src/a.sv\n    - Sub/b.sv\n',
+      'https://raw.githubusercontent.com/o/r/c0ffee/src/top.v': 'module top; endmodule',
+      'https://api.github.com/repos/o/r/contents/src/Sub?ref=c0ffee': JSON.stringify({ type: 'submodule', submodule_git_url: 'git@github.com:x/sub.git', sha: 'beef' }),
+      'https://raw.githubusercontent.com/x/sub/beef/src/a.sv': 'module a; endmodule',
+      'https://raw.githubusercontent.com/x/sub/beef/b.sv': 'module b; endmodule',
+    };
+    const fake3 = async (u: string) => ({ ok: u in f3, status: u in f3 ? 200 : 404, text: async () => f3[u] ?? '' });
+    const d = await fetchDesignSources({ repo, commit: 'c0ffee', macro: 'top' }, fake3);
+    expect(Object.keys(d.sources)).toEqual(['top.v', 'Sub/src/a.sv', 'Sub/b.sv']);
   });
 
   it('needs a repository and commit', async () => {
