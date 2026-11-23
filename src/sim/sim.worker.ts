@@ -6,6 +6,7 @@
 import { fetchDesignSources, SourceError } from '~/lib/simSources';
 import { VGA } from '~/lib/tinyVga';
 import wasmUrl from '~/vendor/vga-playground/verilator/verilator_bin.wasm?url';
+import { onceUnlessFailed } from './cache';
 import type { FromWorker, SimDesign, SimEntry, SimStats, ToWorker } from './protocol';
 import { type HDLModuleWASM, instantiate, verilate } from './verilate';
 import { VgaSim } from './vgaSim';
@@ -13,14 +14,16 @@ import { VgaSim } from './vgaSim';
 declare const self: DedicatedWorkerGlobalScope;
 const post = (m: FromWorker, transfer: Transferable[] = []) => self.postMessage(m, transfer);
 
-let wasmBinary: Promise<ArrayBuffer> | null = null;
-const verilatorWasm = () =>
-  (wasmBinary ??= fetch(wasmUrl).then((r) => {
-    if (!r.ok) throw new Error(`couldn't load the Verilator engine: HTTP ${r.status}`);
+// a failed download is forgotten, so the next design tries again
+const verilatorWasm = onceUnlessFailed(() =>
+  fetch(wasmUrl).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.arrayBuffer();
-  }));
+  }),
+);
 
-type Built = { mod: HDLModuleWASM } | { error: string; stage: 'fetch' | 'compile' };
+/** fetch and engine failures may be temporary, so they aren't cached; compile failures are */
+type Built = { mod: HDLModuleWASM } | { error: string; stage: 'fetch' | 'engine' | 'compile' };
 /** compiled designs by repo@commit:macro; failures are cached too */
 const built = new Map<string, Promise<Built>>();
 const keyOf = (d: SimDesign) => `${d.repo}@${d.commit}:${d.macro}`;
@@ -34,8 +37,14 @@ async function build(d: SimDesign, token: number): Promise<Built> {
     return { stage: 'fetch', error: e instanceof SourceError ? e.message : `couldn't fetch the sources: ${(e as Error).message}` };
   }
   if (cur?.token === token) post({ type: 'status', token, state: 'compiling', note: `${Object.keys(src.sources).length} file(s)${src.language ? `, ${src.language}` : ''}` });
+  let engine: ArrayBuffer;
   try {
-    const v = await verilate(src.top, src.sources, src.compile, await verilatorWasm());
+    engine = await verilatorWasm();
+  } catch (e) {
+    return { stage: 'engine', error: `couldn't load the Verilator engine: ${(e as Error).message ?? e} (try again)` };
+  }
+  try {
+    const v = await verilate(src.top, src.sources, src.compile, engine);
     if (!v.ok) return { stage: 'compile', error: v.stage === 'verilator' ? `Verilator: ${v.reason}` : v.reason };
     return { mod: await instantiate(v.modules, src.dataFiles) };
   } catch (e) {
@@ -150,10 +159,10 @@ async function load(token: number, design: SimDesign, entry: SimEntry, run: bool
     built.set(key, p);
   } else post({ type: 'status', token, state: 'compiling', note: 'compiled earlier' });
   const b = await p;
+  // a network failure may be temporary: let the next attempt fetch again
+  if ('error' in b && (b.stage === 'fetch' || b.stage === 'engine') && built.get(key) === p) built.delete(key);
   if (cur !== c) return;
   if ('error' in b) {
-    // a network failure may be temporary: let the next attempt fetch again
-    if (b.stage === 'fetch') built.delete(key);
     post({ type: 'status', token, state: 'failed', reason: b.error });
     return;
   }
