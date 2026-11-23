@@ -32,8 +32,11 @@ export interface BoardInfo {
   mainStock: string | null;
   configIni: string | null;
   demoJson: string | null;
-  /** SHA-256 (hex) of /demo.py, or null if there is none: the file itself stays on the board. */
-  demoPySha256: string | null;
+  /**
+   * /demo.py, null if there is none. Only its SHA-256 (hex) is read, the file itself stays on
+   * the board; sha256 is null if it couldn't be hashed (the reason is in errors).
+   */
+  demoPy: { sha256: string | null } | null;
   vgaCycle: string | null;
   errors: string[];
 }
@@ -58,10 +61,10 @@ export function parseDetect(out: string): BoardInfo {
   }
   const file = (key: string): string | null => files[key] ?? null;
   const main = file('main');
-  const demoPySha256: string | null = r.demo_py_sha256 ?? null;
+  const demoPy: { sha256: string | null } | null = r.demo_py ?? null;
   let firmware: FirmwareType = 'stock';
   if (r.firmware_demo) firmware = 'custom';
-  else if (demoPySha256 !== null && main?.includes(HELPER_MARKER)) firmware = 'helper';
+  else if (demoPy !== null && main?.includes(HELPER_MARKER)) firmware = 'helper';
   else if (file('vga_cycle') !== null && /\bimport\s+vga_cycle\b/.test(main ?? '')) firmware = 'handmade';
   const sdk: string | null = r.sdk ?? r.release ?? null;
   return {
@@ -82,7 +85,7 @@ export function parseDetect(out: string): BoardInfo {
     mainStock: file('main_stock'),
     configIni: file('config_ini'),
     demoJson: file('demo_json'),
-    demoPySha256,
+    demoPy,
     vgaCycle: file('vga_cycle'),
     errors: r.errors ?? [],
   };

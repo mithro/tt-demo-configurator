@@ -22,8 +22,8 @@ export function helperDemoPy(info: Pick<BoardInfo, 'mcu'>): string {
 }
 
 /** Is the board's /demo.py exactly the helper the app would install on it? */
-export function helperDemoPyCurrent(info: Pick<BoardInfo, 'mcu' | 'demoPySha256'>): boolean {
-  return info.demoPySha256 === helperDemoPySha256(info);
+export function helperDemoPyCurrent(info: Pick<BoardInfo, 'mcu' | 'demoPy'>): boolean {
+  return info.demoPy?.sha256 === helperDemoPySha256(info);
 }
 
 /** SHA-256 (hex) of helperDemoPy(info). */
@@ -176,7 +176,7 @@ export function planResetToStock(info: BoardInfo): FileOp[] {
     ops.push({ op: 'write', path: '/main.py', text: original, why: 'restore the original main.py' });
   }
   if (info.mainStock !== null) ops.push({ op: 'remove', path: '/main_stock.py', why: 'no longer needed' });
-  if (info.demoPySha256 !== null) ops.push({ op: 'remove', path: '/demo.py', why: 'the helper' });
+  if (info.demoPy !== null) ops.push({ op: 'remove', path: '/demo.py', why: 'the helper' });
   if (info.vgaCycle !== null) ops.push({ op: 'remove', path: '/vga_cycle.py', why: 'the hand-made demo' });
   if (info.demoJson !== null) ops.push({ op: 'remove', path: '/demo.json', why: 'the demo sequence' });
   const ini = setDemoLine(info.configIni, null);

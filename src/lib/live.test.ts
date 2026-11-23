@@ -15,7 +15,7 @@ import { sha256Hex } from './sha256';
 
 const FIX = path.resolve(__dirname, '../../test/fixtures');
 const index = JSON.parse(readFileSync(path.join(FIX, 'index.json'), 'utf8'));
-const stock: LiveBoard = { firmware: 'stock', mcu: 'RP2350', demoPySha256: null };
+const stock: LiveBoard = { firmware: 'stock', mcu: 'RP2350', demoPy: null };
 const badFixtures = readdirSync(path.join(FIX, 'bad')).filter((n) => !n.endsWith('.errors.json'));
 
 let board: PythonBoard;
@@ -85,7 +85,7 @@ describe('loading the helper into RAM', () => {
     await r3.check("for _n in ('_tdc_demo', '_tdc_demo_sha256'):\n globals().pop(_n, None)\nimport demo\n");
     // ...then "Make permanent" wrote the current one, and the board was not rebooted
     await writeFile(r3, '/demo.py', HELPER_DEMO_PY.RP2350);
-    const helper: LiveBoard = { firmware: 'helper', mcu: 'RP2350', demoPySha256: sha256Hex(HELPER_DEMO_PY.RP2350) };
+    const helper: LiveBoard = { firmware: 'helper', mcu: 'RP2350', demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2350) } };
     const text = readFileSync(path.join(FIX, 'bad', 'lookup.json'), 'utf8');
     const expected = JSON.parse(readFileSync(path.join(FIX, 'bad', 'lookup.errors.json'), 'utf8'));
     expect(await boardValidate(r3, helper, text)).toEqual(expected);
@@ -140,7 +140,7 @@ function compileEach(pieces: string[]): string[] {
 }
 
 describe('an RP2040 board on SDK 2.x (stub)', () => {
-  const rp2040: LiveBoard = { firmware: 'stock', mcu: 'RP2040', demoPySha256: null };
+  const rp2040: LiveBoard = { firmware: 'stock', mcu: 'RP2040', demoPy: null };
   let b2: PythonBoard;
   let r2: RawRepl;
   beforeAll(async () => {

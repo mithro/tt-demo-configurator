@@ -146,7 +146,7 @@ async function main() {
     const ini0 = readFileSync(path.join(backupDir, 'config.ini'), 'utf8');
     check('main.py back to the original', info.main === main0, `${sha(info.main)} vs ${sha(main0)}`);
     check('config.ini back to the original', info.configIni === ini0, `${sha(info.configIni)} vs ${sha(ini0)}`);
-    check('no helper files left', info.demoPySha256 === null && info.mainStock === null && info.demoJson === null);
+    check('no helper files left', info.demoPy === null && info.mainStock === null && info.demoJson === null);
     check('reported as stock', info.firmware === 'stock', info.firmware);
     await softReboot(repl);
     await sleep(12000);

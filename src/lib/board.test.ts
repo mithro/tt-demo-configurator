@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PythonBoard, startPythonBoard } from '~/testing/pythonBoard';
 import { stubTtboard } from '~/testing/stubTtboard';
 import { detect, HELPER_MARKER, parseDetect, readFile, removeFile, unsupportedReason, writeFile } from './board';
+import { planInstallHelper, planResetToStock } from './helper';
 import { RawRepl } from './rawRepl';
 import { sha256Hex } from './sha256';
 
@@ -62,7 +63,25 @@ describe('detect', () => {
     await writeFile(repl, '/demo.py', '# demo\n');
     await writeFile(repl, '/demo.json', '{"version": 1}');
     await writeFile(repl, '/config.ini', '[DEFAULT]\ndemo = yes\n');
-    expect(await detect(repl)).toMatchObject({ firmware: 'helper', demoSetting: true, demoJson: '{"version": 1}', demoPySha256: sha256Hex('# demo\n') });
+    expect(await detect(repl)).toMatchObject({ firmware: 'helper', demoSetting: true, demoJson: '{"version": 1}', demoPy: { sha256: sha256Hex('# demo\n') } });
+  });
+  it('still reports the board when /demo.py cannot be hashed, and keeps it a helper board', async () => {
+    await writeFile(repl, '/main_stock.py', 'print("stock")\n');
+    await repl.check(
+      "import hashlib\n_real_sha256 = hashlib.sha256\nclass _NoMem:\n def update(self, c): raise MemoryError('memory allocation failed')\nhashlib.sha256 = lambda: _NoMem()\n",
+    );
+    let info;
+    try {
+      info = await detect(repl);
+    } finally {
+      await repl.check('hashlib.sha256 = _real_sha256\n');
+    }
+    expect(info).toMatchObject({ firmware: 'helper', demoPy: { sha256: null }, demoSetting: true });
+    expect(info.errors).toContain("could not hash /demo.py: MemoryError('memory allocation failed')");
+    // not mistaken for a board without the helper: install rewrites it, reset removes it
+    expect(planInstallHelper(info).map((o) => `${o.op} ${o.path}`)).toContain('write /demo.py');
+    expect(planResetToStock(info).map((o) => `${o.op} ${o.path}`)).toContain('remove /demo.py');
+    await removeFile(repl, '/main_stock.py');
   });
   it('sees a hand-made Shenzhen board', async () => {
     await removeFile(repl, '/demo.py');
@@ -124,7 +143,7 @@ describe('detect on an RP2040 board (SDK 2.x stub)', () => {
   it('sees the chip, the SDK, the mode and the DIP switches', async () => {
     await writeFile(r2, '/main.py', 'print("stock 2")\n');
     const info = await detect(r2);
-    expect(info).toMatchObject({ mcu: 'RP2040', sdk: '2.0.4', shuttle: 'tt07', firmware: 'stock', mode: 'ASIC_RP_CONTROL', dipOn: [], demoPySha256: null });
+    expect(info).toMatchObject({ mcu: 'RP2040', sdk: '2.0.4', shuttle: 'tt07', firmware: 'stock', mode: 'ASIC_RP_CONTROL', dipOn: [], demoPy: null });
     expect(unsupportedReason(info)).toBeNull();
     await r2.check('from ttboard.demoboard import DemoBoard\nDemoBoard.get().pins.ui_in7.switch = 1\n');
     expect((await detect(r2)).dipOn).toEqual([7]);

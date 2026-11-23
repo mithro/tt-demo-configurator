@@ -40,7 +40,7 @@ describe.skipIf(!sdk2Version)(`the real SDK ${sdk2Version ?? '2.x'} (RP2040)`, (
   it('boots its stock main.py and is detected as a supported RP2040 board', () => {
     expect(info).toMatchObject({
       mcu: 'RP2040', sdk: sdk2Version, shuttle: 'ttsky25a', rom: ROM, firmware: 'stock', mode: 'ASIC_RP_CONTROL', dipOn: [],
-      demoSetting: false, demoRunning: false, demoPySha256: null, errors: [],
+      demoSetting: false, demoRunning: false, demoPy: null, errors: [],
     });
     expect(info.projects).toBe(4);
     expect(info.main).toBe(stockMainFor(sdk2Version)!);
@@ -108,7 +108,7 @@ describe.skipIf(!sdk2Version)(`the real SDK ${sdk2Version ?? '2.x'} (RP2040)`, (
     expect(stockWarnings(info, reset)).toEqual([]);
     await applyOps(repl, reset);
     await reboot();
-    expect(info).toMatchObject({ firmware: 'stock', demoRunning: false, demoPySha256: null, mainStock: null, demoJson: null });
+    expect(info).toMatchObject({ firmware: 'stock', demoRunning: false, demoPy: null, mainStock: null, demoJson: null });
     expect(info.main).toBe(main0);
     expect(info.configIni).toBe(ini0);
   });

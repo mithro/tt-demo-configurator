@@ -29,7 +29,7 @@ function board(over: Partial<BoardInfo>): BoardInfo {
   return {
     machine: 'RP2350', mcu: 'RP2350', sdk: '3.1.1', shuttle: 'ttsky25a', rom: null, isFpga: false, projects: 237,
     firmware: 'stock', demoSetting: false, mode: 'ASIC_RP_CONTROL', dipOn: [], demoRunning: false, demoErrors: [], main: stock31, mainStock: null,
-    configIni: stockIni, demoJson: null, demoPySha256: null, vgaCycle: null, errors: [], ...over,
+    configIni: stockIni, demoJson: null, demoPy: null, vgaCycle: null, errors: [], ...over,
   };
 }
 const written = (ops: { op: string; path: string }[]) => ops.map((o) => `${o.op} ${o.path}`);
@@ -86,10 +86,10 @@ describe('plans', () => {
   });
   it('needs nothing on custom firmware or an up-to-date helper', () => {
     expect(planInstallHelper(board({ firmware: 'custom' }))).toEqual([]);
-    expect(planInstallHelper(board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPySha256: sha256Hex(HELPER_DEMO_PY.RP2350) }))).toEqual([]);
+    expect(planInstallHelper(board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2350) } }))).toEqual([]);
   });
   it('makes permanent, turns off and resets to stock', () => {
-    const helper = board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPySha256: sha256Hex(HELPER_DEMO_PY.RP2350) });
+    const helper = board({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock31, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2350) } });
     expect(written(planMakePermanent(helper, '{}'))).toEqual(['write /demo.json', 'write /config.ini']);
     const on = { ...helper, configIni: setDemoLine(stockIni, 'yes'), demoJson: '{}' };
     expect((planTurnOff(on)[0] as { text: string }).text).toContain('demo = no');
@@ -119,13 +119,13 @@ describe('RP2040 boards (SDK 2.x)', () => {
     expect(ops[0]).toMatchObject({ text: HELPER_DEMO_PY.RP2040 });
     expect(ops[1]).toMatchObject({ text: stock204 });
     // a board with the 3.x helper on it gets the 2.x one
-    const wrong = rp2040({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock204, demoPySha256: sha256Hex(HELPER_DEMO_PY.RP2350) });
+    const wrong = rp2040({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock204, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2350) } });
     expect(written(planInstallHelper(wrong))).toEqual(['write /demo.py']);
-    const right = { ...wrong, demoPySha256: sha256Hex(HELPER_DEMO_PY.RP2040) };
+    const right = { ...wrong, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2040) } };
     expect(planInstallHelper(right)).toEqual([]);
   });
   it('makes permanent and resets to the exact 2.0.4 stock files', () => {
-    const helper = rp2040({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock204, demoPySha256: sha256Hex(HELPER_DEMO_PY.RP2040) });
+    const helper = rp2040({ firmware: 'helper', main: WRAPPER_MAIN, mainStock: stock204, demoPy: { sha256: sha256Hex(HELPER_DEMO_PY.RP2040) } });
     const perm = planMakePermanent(helper, '{}');
     expect(written(perm)).toEqual(['write /demo.json', 'write /config.ini']);
     const ini = (perm[1] as { text: string }).text;

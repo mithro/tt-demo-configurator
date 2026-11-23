@@ -16,21 +16,28 @@ def _tt_demo_detect():
         except OSError:
             return None
 
-    def sha256(path):
-        # the app only needs to know whether the board's copy is the one it has
+    def hashed(path):
+        # the app only needs to know whether the board's copy is the one it has:
+        # None if there is no file, else {'sha256': hex digest, or None if it couldn't
+        # be hashed, with the reason in errors, rather than lose the whole report}
         import hashlib, binascii
         try:
             f = open(path, 'rb')
         except OSError:
             return None
-        h = hashlib.sha256()
-        while True:
-            c = f.read(512)
-            if not c:
-                break
-            h.update(c)
-        f.close()
-        return binascii.hexlify(h.digest()).decode()
+        try:
+            h = hashlib.sha256()
+            while True:
+                c = f.read(512)
+                if not c:
+                    break
+                h.update(c)
+            return {'sha256': binascii.hexlify(h.digest()).decode()}
+        except Exception as e:
+            r['errors'].append('could not hash %s: %r' % (path, e))
+            return {'sha256': None}
+        finally:
+            f.close()
 
     r['machine'] = getattr(sys.implementation, '_machine', '')
     r['release'] = None
@@ -117,7 +124,7 @@ def _tt_demo_detect():
     except Exception as e:
         r['demo_setting'] = False
         r['errors'].append('config.ini: %s' % e)
-    r['demo_py_sha256'] = sha256('/demo.py')
+    r['demo_py'] = hashed('/demo.py')
     print('DETECT:' + json.dumps(r))
     r = None
     for key, path in (('main', '/main.py'), ('main_stock', '/main_stock.py'), ('config_ini', '/config.ini'),

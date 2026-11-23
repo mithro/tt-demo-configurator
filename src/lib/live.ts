@@ -18,7 +18,7 @@ import { RawRepl, ReplError } from './rawRepl';
 const SRC_CHUNK = 2048;
 
 /** What the live functions need to know about the board. */
-export type LiveBoard = Pick<BoardInfo, 'firmware' | 'mcu' | 'demoPySha256'>;
+export type LiveBoard = Pick<BoardInfo, 'firmware' | 'mcu' | 'demoPy'>;
 
 /**
  * The module's source cut before each top-level def or class. Each piece is a complete
