@@ -110,7 +110,9 @@ export function BoardPanel() {
               </Typography>
               <Typography variant="caption">
                 Both kinds work: the <b>Tiny Tapeout Demoboard: ETR</b> (RP2350, firmware SDK 3.x) and the RP2040
-                demoboards of TT04–TT08 (e.g. &ldquo;TinyTapeout 06+ Demoboard&rdquo;, firmware SDK 2.0.x).
+                demoboards of TT04–TT08 (e.g. &ldquo;TinyTapeout 06+ Demoboard&rdquo;, firmware SDK 2.0.x). So does
+                the FPGA board (an RP2350 demoboard with an FPGA breakout in place of the chip): its designs are the
+                bitstreams on it.
               </Typography>
               <ConnectHelp />
               <Show when={act.savedBackup()}>
