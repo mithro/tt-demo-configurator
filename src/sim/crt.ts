@@ -48,6 +48,11 @@ export class Crt {
   private lineClocks = 0;
   private lines = 0;
   private frameLines = 0;
+  /** last column drawn on this line, and its colour */
+  private lastPx = -1;
+  private lastColour = 0;
+  /** last row drawn in this frame */
+  private maxRow = -1;
 
   constructor(clockHz: number) {
     this.clockHz = clockHz;
@@ -95,9 +100,11 @@ export class Crt {
           if (this.sinceHStart !== this.lineClocks && this.sinceHStart > 16) this.setLine(this.sinceHStart);
           this.lineClocks = this.sinceHStart;
           this.sinceHStart = 0;
+          this.endLine();
         } else {
           // hsync pulse ends: back porch, then the active pixels
           this.x = 0;
+          this.lastPx = -1;
           this.y++;
           this.lines++;
         }
@@ -115,6 +122,7 @@ export class Crt {
           this.frameLines = this.lines;
           this.lines = 0;
           this.frames++;
+          this.endFrame();
           done = true;
         } else {
           // vsync pulse ends. If it ends late in a line, the next hsync starts line 0.
@@ -130,9 +138,34 @@ export class Crt {
     this.x++;
     if (py >= 0 && py < VGA.height && xc >= 0) {
       const px = (xc * this.pxPerClock) | 0;
-      if (px < VGA.width) this.pixels[py * VGA.width + px] = LUT[uo];
+      if (px > this.lastPx && this.lastPx < VGA.width - 1) {
+        // a clock longer than a pixel covers several: the previous sample holds until this one
+        const row = py * VGA.width;
+        const colour = LUT[uo];
+        const fill = this.lastPx >= 0 ? this.lastColour : colour;
+        const end = Math.min(px, VGA.width);
+        for (let k = this.lastPx + 1; k < end; k++) this.pixels[row + k] = fill;
+        if (px < VGA.width) this.pixels[row + px] = colour;
+        this.lastPx = end === px ? px : VGA.width - 1;
+        this.lastColour = colour;
+        if (py > this.maxRow) this.maxRow = py;
+      }
     }
     return done;
+  }
+
+  /** A line ended: columns it didn't reach are black, as on a monitor. */
+  private endLine() {
+    const py = this.y - VGA.vBack;
+    if (py >= 0 && py < VGA.height && this.lastPx >= 0) this.pixels.fill(0xff000000, py * VGA.width + this.lastPx + 1, (py + 1) * VGA.width);
+    // nothing more on this row: the next hsync pulse's end starts the next line
+    this.lastPx = VGA.width - 1;
+  }
+
+  /** A frame ended: rows it didn't reach are black. */
+  private endFrame() {
+    this.pixels.fill(0xff000000, (this.maxRow + 1) * VGA.width);
+    this.maxRow = -1;
   }
 
   clear() {

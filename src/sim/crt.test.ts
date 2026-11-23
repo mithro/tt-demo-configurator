@@ -72,4 +72,33 @@ describe('Crt', () => {
     expect(slow.standard()).toBe(false);
     expect(slow.pixels[479 * 640 + 639]).toBe(LUT[pattern(639, 479)]);
   });
+
+  it('fills every column when a clock is longer than a pixel (review #6)', () => {
+    // 12.5875 MHz, 400 clocks a line: each sample covers two pixels
+    const crt = new Crt(12_587_500);
+    const fine = (x: number, y: number) => (x + y) & 0x77;
+    for (let f = 0; f < 3; f++)
+      for (let v = 0; v < 525; v++) for (let h = 0; h < 800; h += 2) crt.feed(signal(h, v, false, fine));
+    expect(crt.standard()).toBe(true);
+    for (const y of [0, 100, 479]) {
+      const row = [...crt.pixels.slice(y * 640, (y + 1) * 640)];
+      expect(row, `row ${y}`).toEqual(row.map((_, x) => LUT[fine(x & ~1, y)]));
+    }
+  });
+
+  it('blanks rows a shorter frame did not reach (review #6)', () => {
+    const crt = new Crt(25_175_000);
+    run(crt, 2, 1, false, () => 0x77);
+    expect(crt.pixels[470 * 640 + 10]).toBe(LUT[0x77]);
+    // 300-line frames, vsync on lines 290-291: rows past about 260 are never drawn now
+    for (let f = 0; f < 2; f++)
+      for (let v = 0; v < 300; v++)
+        for (let h = 0; h < 800; h++) {
+          const hs = h >= 656 && h < 752;
+          const vs = v >= 290 && v < 292;
+          crt.feed((hs ? 0 : 0x80) | (vs ? 0 : 0x08) | (h < 640 && v < 250 ? 0x77 : 0));
+        }
+    expect(crt.pixels[100 * 640 + 10]).toBe(LUT[0x77]);
+    expect(crt.pixels[470 * 640 + 10]).toBe(LUT[0]);
+  });
 });
