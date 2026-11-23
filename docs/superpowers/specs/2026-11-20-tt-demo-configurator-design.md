@@ -39,7 +39,7 @@ This app makes that workflow repeatable by anyone, from a web page, without writ
 
 ## Non-goals (v1)
 
-- Gamepad Pmod emulation. This is planned for v2. In v1 all inputs are direct `ui_in` writes, which is
+- Gamepad Pmod emulation. This is planned for v2 (since added, 2026-11-23: `{"gamepad": [...]}` steps, see the README). In v1 all inputs are direct `ui_in` writes, which is
   what all three real game demos used.
 - Holding sequences for several chips on one board, so it still works when the daughterboard is swapped
   (the later "demo board" idea). The file format allows it later, since each file names its shuttle.
@@ -277,7 +277,7 @@ simulation (the user's inputs, but possibly slow). The choice per design is abov
   reset when the steps run out, address plus subtile identification, the shuttle checked.
 - Invalid files fail loudly.
 - No boot-key trigger on stock firmware is fine.
-- Gamepad emulation is v2.
+- Gamepad emulation is v2 (added 2026-11-23 as "gamepad" steps).
 - Detecting and switching firmware type works the way the commander offers upgrades.
 - Offline mode with preview from vga-playground and the videos. A fork of vga-playground is fine.
   Recorded videos come first in v1, and simulation follows as a later milestone.
