@@ -35,7 +35,7 @@ async function build(d: SimDesign, token: number): Promise<Built> {
   }
   if (cur?.token === token) post({ type: 'status', token, state: 'compiling', note: `${Object.keys(src.sources).length} file(s)${src.language ? `, ${src.language}` : ''}` });
   try {
-    const v = await verilate(src.top, src.sources, await verilatorWasm());
+    const v = await verilate(src.top, src.sources, src.compile, await verilatorWasm());
     if (!v.ok) return { stage: 'compile', error: v.stage === 'verilator' ? `Verilator: ${v.reason}` : v.reason };
     return { mod: await instantiate(v.modules, src.dataFiles) };
   } catch (e) {

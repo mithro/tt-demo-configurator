@@ -6,14 +6,13 @@ import type { HDLModuleDef } from '~/vendor/vga-playground/sim/hdltypes';
 import { HDLModuleWASM } from '~/vendor/vga-playground/sim/hdlwasm';
 import { VerilogXMLParser } from '~/vendor/vga-playground/sim/vxmlparser';
 import verilator_bin from '~/vendor/vga-playground/verilator/verilator_bin';
-import { includesOf } from '~/lib/simSources';
 import { cellModels } from './cells';
 
 export type Verilated =
   | { ok: true; modules: Record<string, HDLModuleDef>; warnings: number }
   | { ok: false; stage: 'verilator' | 'xml'; reason: string; log: string[] };
 
-const isHeader = (f: string) => /\.(vh|svh|vinc|inc)$/i.test(f);
+const CELLS_FILE = 'src/tt_sim_sky130_cells.v';
 
 /** First few Verilator errors, readable on one line each. */
 export function errorSummary(log: string[], max = 3): string {
@@ -26,7 +25,8 @@ export function errorSummary(log: string[], max = 3): string {
   return errs.slice(0, max).join('; ') + more;
 }
 
-export async function verilate(top: string, sources: Record<string, string>, wasmBinary: ArrayBuffer | Uint8Array): Promise<Verilated> {
+/** sources by repository path; compile: the ones to give Verilator, in order (DesignSources.compile) */
+export async function verilate(top: string, sources: Record<string, string>, compile: string[], wasmBinary: ArrayBuffer | Uint8Array): Promise<Verilated> {
   const log: string[] = [];
   const inst = verilator_bin({
     wasmBinary,
@@ -37,27 +37,17 @@ export async function verilate(top: string, sources: Record<string, string>, was
   });
   await inst.ready;
   const { FS } = inst;
-  const dirs = new Set<string>();
-  FS.mkdir('src');
-  dirs.add('src');
-  const files: string[] = [];
+  // files at their repository paths (src/project.v), so `include and $readmem paths work
   const cells = cellModels(sources);
-  const included = new Set(Object.values(sources).flatMap(includesOf).map((f) => f.replace(/^(\.\/)+/, '')));
-  const all = cells ? { ...sources, 'tt_sim_sky130_cells.v': cells } : sources;
-  for (const [name, text] of Object.entries(all)) {
-    const p = `src/${name}`;
-    const parts = p.split('/');
-    for (let i = 1; i < parts.length; i++) {
-      const d = parts.slice(0, i).join('/');
-      if (!dirs.has(d)) {
-        FS.mkdir(d);
-        dirs.add(d);
-      }
-    }
-    FS.writeFile(p, text);
-    // a listed file that another one `includes is a fragment, not a file to compile
-    if (!isHeader(name) && !included.has(name)) files.push(p);
+  const all = cells ? { ...sources, [CELLS_FILE]: cells } : sources;
+  const files = cells ? [...compile, CELLS_FILE] : compile;
+  const dirs = new Set<string>(['src']);
+  for (const name of Object.keys(all)) {
+    const parts = name.split('/');
+    for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
   }
+  for (const d of [...dirs].sort((a, b) => a.length - b.length)) FS.mkdir(d);
+  for (const [name, text] of Object.entries(all)) FS.writeFile(name, text);
   const args = [
     '--cc',
     '-O3',

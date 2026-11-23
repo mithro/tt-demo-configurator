@@ -132,10 +132,25 @@ export function dropLintDirectives(src: string): string {
 
 /** Verilator configuration (.vlt) is lint waivers here: not needed to simulate. */
 const isVerilatorConfig = (f: string) => /\.vlt$/i.test(f);
+/** Header files are only ever `included. */
+export const isHeader = (f: string) => /\.(vh|svh|vinc|inc)$/i.test(f);
+
+const dirOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '');
+
+/**
+ * Where `include "inc" in file (both repo paths) may be, in the order the simulator's
+ * Verilator looks: the including file's directory, then src/ (-Isrc/). The compile gets
+ * -I for every directory a source is in, so these are the paths that matter.
+ */
+export function includeCandidates(file: string, inc: string): string[] {
+  return [...new Set([normPath(dirOf(file) + inc), normPath(`src/${inc}`)])].filter((p): p is string => p !== null);
+}
 
 export interface DesignSources {
-  /** Verilog/SystemVerilog sources and headers, by path relative to src/. */
+  /** Verilog/SystemVerilog sources and headers, by path from the repository root (src/project.v). */
   sources: Record<string, string>;
+  /** The files to give Verilator, in order: the listed ones that aren't `included by another. */
+  compile: string[];
   /** $readmem files, by the name the Verilog uses. */
   dataFiles: Record<string, string>;
   /** The top module (info.yaml's top_module, else the macro). */
@@ -163,10 +178,9 @@ async function findSubmodules(repo: string, commit: string, missing: string[], f
   if (!m) return false;
   const dirs = new Set<string>();
   for (const f of missing) {
-    const p = normPath(`src/${f}`);
-    const parts = p?.split('/') ?? [];
-    // src/<dir>/..., and the repo's own top level for paths like ../<dir>/...
-    for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
+    // every directory above the file, from the repository root (src/<dir>, or <dir> for ../<dir>/...)
+    const parts = normPath(`src/${f}`)?.split('/') ?? [];
+    for (let i = 1; i < parts.length; i++) if (parts.slice(0, i).join('/') !== 'src') dirs.add(parts.slice(0, i).join('/'));
   }
   let any = false;
   for (const dir of [...dirs].sort((a, b) => a.length - b.length)) {
@@ -224,14 +238,10 @@ export async function fetchDesignSources(
   const listed = meta.sourceFiles.filter((f) => !isVerilatorConfig(f));
   if (!listed.length) throw new SourceError('info.yaml lists no source_files');
 
+  // listed paths are relative to src/, but may climb out of it (../ip/core.v)
+  const resolved = listed.map((f) => [f, normPath(`src/${f}`)] as const);
   // in the listed order: Verilator reads them in turn, and `defines carry from file to file
-  const fetchListed = () =>
-    Promise.all(
-      listed.map(async (f) => {
-        const p = normPath(f);
-        return [f, p, p === null ? null : await get(`src/${p}`)] as const;
-      }),
-    );
+  const fetchListed = () => Promise.all(resolved.map(async ([f, p]) => [f, p, p === null ? null : await get(p)] as const));
   let got = await fetchListed();
   const missingOf = () => got.filter(([, , t]) => t === null).map(([f]) => f);
   if (missingOf().length && (await findSubmodules(repo, commit, missingOf(), submodules, fetchFn))) got = await fetchListed();
@@ -239,22 +249,25 @@ export async function fetchDesignSources(
   if (missing.length) throw new SourceError(`missing source file${missing.length > 1 ? 's' : ''} ${missing.sort().join(', ')}`);
   const sources: Record<string, string> = {};
   for (const [, p, t] of got) sources[p!] = t!;
+  const listedPaths = Object.keys(sources);
 
-  // `include files: relative to the including file's directory, or to src/ (-Isrc/)
-  const seen = new Set(Object.keys(sources));
+  // `include files, resolved the way Verilator will find them (see includeCandidates)
+  const included = new Set<string>();
   let pending = Object.entries(sources);
   while (pending.length) {
     const next: [string, string][] = [];
     for (const [file, text] of pending) {
       for (const inc of includesOf(text)) {
-        const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/') + 1) : '';
-        const options = [...new Set([normPath(dir + inc), normPath(inc)])].filter((p): p is string => p !== null);
-        if (options.some((p) => seen.has(p))) continue;
-        for (const p of options) {
-          seen.add(p);
-          const t = await get(`src/${p}`);
+        // the first candidate that exists, in order, whether already loaded or not
+        for (const p of includeCandidates(file, inc)) {
+          if (p in sources) {
+            included.add(p);
+            break;
+          }
+          const t = await get(p);
           if (t !== null) {
             sources[p] = t;
+            included.add(p);
             next.push([p, t]);
             break;
           }
@@ -281,5 +294,12 @@ export async function fetchDesignSources(
     }),
   );
   for (const k of Object.keys(sources)) sources[k] = dropLintDirectives(sources[k]);
-  return { sources, dataFiles, top: meta.topModule ?? d.macro, language: meta.language };
+  return {
+    sources,
+    // a listed file that another one `includes is a fragment, not a file to compile
+    compile: listedPaths.filter((p) => !included.has(p) && !isHeader(p)),
+    dataFiles,
+    top: meta.topModule ?? d.macro,
+    language: meta.language,
+  };
 }

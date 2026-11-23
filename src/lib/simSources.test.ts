@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dropLintDirectives, fetchDesignSources, githubRepoUrl, includesOf, normPath, parseInfoYaml, rawUrl, readmemsOf, SourceError } from './simSources';
+import { dropLintDirectives, fetchDesignSources, githubRepoUrl, includeCandidates, includesOf, normPath, parseInfoYaml, rawUrl, readmemsOf, SourceError } from './simSources';
 
 const F = path.resolve(__dirname, '../../test/fixtures/sim');
 const crossy = readFileSync(path.join(F, 'crossyroad-info.yaml'), 'utf8');
@@ -78,7 +78,8 @@ describe('fetchDesignSources', () => {
   it('fetches the listed sources, their includes and $readmem files at the commit', async () => {
     const d = await fetchDesignSources({ repo, commit: 'c0ffee', macro: 'tt_um_other' }, fake);
     expect(d.top).toBe('tt_um_t');
-    expect(Object.keys(d.sources).sort()).toEqual(['defs.vh', 'more.vh', 'project.v', 'sub/vga.v']);
+    expect(Object.keys(d.sources).sort()).toEqual(['src/defs.vh', 'src/more.vh', 'src/project.v', 'src/sub/vga.v']);
+    expect(d.compile).toEqual(['src/project.v', 'src/sub/vga.v']);
     expect(d.dataFiles).toEqual({ 'rom.hex': '00 01\n' });
     expect(urls.every((u) => u.includes('/c0ffee/'))).toBe(true);
   });
@@ -102,7 +103,45 @@ describe('fetchDesignSources', () => {
     };
     const fake3 = async (u: string) => ({ ok: u in f3, status: u in f3 ? 200 : 404, text: async () => f3[u] ?? '' });
     const d = await fetchDesignSources({ repo, commit: 'c0ffee', macro: 'top' }, fake3);
-    expect(Object.keys(d.sources)).toEqual(['top.v', 'Sub/src/a.sv', 'Sub/b.sv']);
+    expect(Object.keys(d.sources)).toEqual(['src/top.v', 'src/Sub/src/a.sv', 'src/Sub/b.sv']);
+  });
+
+  /** a fake fetch over repo paths of o/r at c0ffee */
+  const repoFetch = (tree: Record<string, string>) => async (u: string) => {
+    const t = tree[u.replace('https://raw.githubusercontent.com/o/r/c0ffee/', '')];
+    return { ok: t !== undefined, status: t === undefined ? 404 : 200, text: async () => t ?? '' };
+  };
+
+  it('loads listed sources outside src/ (review #1)', async () => {
+    const d = await fetchDesignSources(
+      { repo, commit: 'c0ffee', macro: 'top' },
+      repoFetch({ 'info.yaml': 'project:\n  source_files:\n    - top.v\n    - ../ip/core.v\n', 'src/top.v': 'module top; endmodule', 'ip/core.v': 'module core; endmodule' }),
+    );
+    expect(d.compile).toEqual(['src/top.v', 'ip/core.v']);
+    expect(d.sources['ip/core.v']).toBe('module core; endmodule');
+  });
+
+  it('resolves `include from the including file\'s directory first (review #5)', async () => {
+    const d = await fetchDesignSources(
+      { repo, commit: 'c0ffee', macro: 'top' },
+      repoFetch({
+        'info.yaml': 'project:\n  source_files:\n    - sub/top.v\n    - sub/defs.v\n    - helper.v\n',
+        // sub/top.v includes "defs.v" (= src/sub/defs.v, a listed fragment) and "helper.v",
+        // which exists as src/sub/helper.v: the listed src/helper.v is still a real source
+        'src/sub/top.v': '`include "defs.v"\n`include "helper.v"\nmodule top; endmodule',
+        'src/sub/defs.v': 'localparam X = 1;',
+        'src/sub/helper.v': 'localparam Y = 2;',
+        'src/helper.v': 'module helper; endmodule',
+      }),
+    );
+    expect(d.compile).toEqual(['src/sub/top.v', 'src/helper.v']);
+    expect(Object.keys(d.sources).sort()).toEqual(['src/helper.v', 'src/sub/defs.v', 'src/sub/helper.v', 'src/sub/top.v']);
+  });
+
+  it('lists include candidates as Verilator searches them', () => {
+    expect(includeCandidates('src/sub/top.v', 'defs.v')).toEqual(['src/sub/defs.v', 'src/defs.v']);
+    expect(includeCandidates('src/top.v', 'defs.v')).toEqual(['src/defs.v']);
+    expect(includeCandidates('ip/core.v', '../src/defs.vh')).toEqual(['src/defs.vh']);
   });
 
   it('needs a repository and commit', async () => {

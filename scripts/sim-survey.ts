@@ -57,7 +57,7 @@ for (const shuttle of shuttles) {
         continue;
       }
       row.language = src.language;
-      const v = await verilate(src.top, src.sources, wasm);
+      const v = await verilate(src.top, src.sources, src.compile, wasm);
       row.compile_s = (Date.now() - t0) / 1000;
       if (!v.ok) {
         row.outcome = 'compile';
