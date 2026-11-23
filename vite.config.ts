@@ -17,5 +17,8 @@ export default defineConfig({
   plugins: [suidPlugin(), solidPlugin()],
   resolve: { alias: { '~': path.resolve(__dirname, './src') } },
   define: { __COMMIT_HASH__: JSON.stringify(commit) },
+  // the simulator worker (src/sim) is an ES module: binaryen uses top-level await
+  worker: { format: 'es' },
+  build: { target: 'es2022' },
   test: { environment: 'node', include: ['src/**/*.test.ts'] },
 });
