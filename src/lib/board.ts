@@ -3,6 +3,7 @@
 import { compareVersions, Mcu, sdkMajor, STOCK_FIRMWARE } from './firmware';
 import detectPy from './py/detect.py?raw';
 import { RawRepl, ReplError } from './rawRepl';
+import { sha256Hex } from './sha256';
 
 /** The marker the stock-firmware helper's wrapper main.py carries. */
 export const HELPER_MARKER = '# tt-demo-configurator helper';
@@ -110,11 +111,6 @@ function fromBase64(b64: string): Uint8Array {
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  return Array.from(d, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
 /** A file's text, or null if it doesn't exist. */
 export async function readFile(repl: RawRepl, path: string): Promise<string | null> {
   const out = await repl.check(
@@ -155,7 +151,7 @@ export async function writeFile(repl: RawRepl, path: string, text: string): Prom
     `import hashlib,binascii\n_h=hashlib.sha256()\nwith open(${py(tmp)},'rb') as _f:\n while True:\n  _c=_f.read(1024)\n  if not _c: break\n  _h.update(_c)\nprint(binascii.hexlify(_h.digest()).decode())\ndel _h,_f,_c\n`,
     30000,
   );
-  const want = await sha256Hex(bytes);
+  const want = sha256Hex(bytes);
   if (out.trim() !== want) {
     await removeFile(repl, tmp);
     throw new ReplError(`writing ${path} failed: the board's copy doesn't match`);
