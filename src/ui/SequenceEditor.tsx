@@ -9,7 +9,12 @@ import { state as s } from './state';
 import { StepEditor } from './StepEditor';
 
 const READY = import.meta.glob('../data/demos/*.demo.json', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
-const readyMade = Object.entries(READY).map(([p, text]) => ({ shuttle: p.split('/').pop()!.replace('.demo.json', ''), text }));
+/** Where each ready-made sequence came from; the others are the Shenzhen (2026-11) booth boards. */
+const ORIGIN: Record<string, string> = { tt08: 'TT08 VGA demos' };
+const readyMade = Object.entries(READY).map(([p, text]) => {
+  const shuttle = p.split('/').pop()!.replace('.demo.json', '');
+  return { shuttle, text, origin: ORIGIN[shuttle] ?? 'Shenzhen 2026' };
+});
 
 const CLOCKS = [0, 10_000, 1_000_000, 10_000_000, 25_000_000, 25_175_000, 25_200_000, 31_500_000, 40_000_000, 50_000_000, 50_350_000];
 
@@ -157,7 +162,7 @@ function EmptySequence() {
                 sx={{ flexDirection: 'column', alignItems: 'flex-start', textTransform: 'none', p: 1.5 }}
               >
                 <b>{r.shuttle}</b>
-                <span style={{ 'font-size': '12px', opacity: 0.8 }}>{n()} designs · Shenzhen 2026</span>
+                <span style={{ 'font-size': '12px', opacity: 0.8 }}>{n()} designs · {r.origin}</span>
               </Button>
             );
           }}
@@ -204,7 +209,7 @@ export function SequenceEditor() {
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mt: 1, pb: 1, borderBottom: '1px solid #eee' }}>
           <Select size="small" variant="standard" value="" displayEmpty sx={{ fontSize: '13px', mr: 1 }} onChange={(e) => e.target.value && act.openText(e.target.value, 'a ready-made sequence')}>
             <MenuItem value="">ready-made…</MenuItem>
-            <For each={readyMade}>{(r) => <MenuItem value={r.text}>{r.shuttle} (Shenzhen 2026)</MenuItem>}</For>
+            <For each={readyMade}>{(r) => <MenuItem value={r.text}>{r.shuttle} ({r.origin})</MenuItem>}</For>
           </Select>
           <Button size="small" onClick={() => fileInput.click()}>
             Open file

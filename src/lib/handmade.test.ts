@@ -52,6 +52,11 @@ describe('bundled ready-made sequences', () => {
       expect(file!.projects).toHaveLength(parseVgaCycle(read(`vga_cycle-${shuttle}.py`)).length);
     });
   }
+  it('tt08.demo.json is valid', () => {
+    const { file, errors } = parseDemoText(readFileSync(path.join(DEMOS, 'tt08.demo.json'), 'utf8'), 'tt08');
+    expect(errors).toEqual([]);
+    expect(file!.projects).toHaveLength(21);
+  });
   it('gives the three games fixed scripts', () => {
     const file = JSON.parse(readFileSync(path.join(DEMOS, 'ttsky25a.demo.json'), 'utf8'));
     const by = Object.fromEntries(file.projects.map((p: { address: number }) => [p.address, p]));
