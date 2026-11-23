@@ -49,3 +49,6 @@ export type FromWorker =
   | { type: 'stats'; token: number; stats: SimStats }
   /** The worker is listening. Module workers lose messages sent before this (binaryen's top-level await runs first). */
   | { type: 'ready'; token: 0 };
+
+/** How the worker caches a design, and how the app tells designs apart. */
+export const designKey = (d: SimDesign) => `${d.repo}@${d.commit}:${d.macro}`;

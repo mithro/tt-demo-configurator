@@ -7,7 +7,7 @@ import { fetchDesignSources, SourceError } from '~/lib/simSources';
 import { VGA } from '~/lib/tinyVga';
 import wasmUrl from '~/vendor/vga-playground/verilator/verilator_bin.wasm?url';
 import { Lru, onceUnlessFailed } from './cache';
-import type { FromWorker, SimDesign, SimEntry, SimStats, ToWorker } from './protocol';
+import { designKey, type FromWorker, type SimDesign, type SimEntry, type SimStats, type ToWorker } from './protocol';
 import { type HDLModuleWASM, instantiate, verilate } from './verilate';
 import { VgaSim } from './vgaSim';
 
@@ -30,7 +30,6 @@ const built = new Lru<string, Promise<Built>>(KEEP_COMPILED, (_key, p) => {
   // free the evicted model's memory, unless the running preview still uses it
   void p.then((b) => 'mod' in b && b.mod !== cur?.mod && b.mod.dispose());
 });
-const keyOf = (d: SimDesign) => `${d.repo}@${d.commit}:${d.macro}`;
 
 async function build(d: SimDesign, token: number): Promise<Built> {
   post({ type: 'status', token, state: 'fetching' });
@@ -157,7 +156,7 @@ async function load(token: number, design: SimDesign, entry: SimEntry, run: bool
     post({ type: 'status', token, state: 'failed', reason: 'this entry stops the clock (clock_hz 0), so the design shows nothing' });
     return;
   }
-  const key = keyOf(design);
+  const key = designKey(design);
   let p = built.get(key);
   if (!p) {
     p = build(design, token);
