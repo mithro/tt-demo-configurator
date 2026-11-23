@@ -190,7 +190,7 @@ export function unsupportedReason(b: BoardInfo): string | null {
   const later = 'You can still build, preview and download sequences here.';
   if (!b.mcu) {
     return (
-      `This board has a ${b.machine || 'microcontroller this app doesn’t recognise'}. The configurator supports the ` +
+      `This board’s microcontroller (${b.machine || 'it didn’t say which'}) isn’t one the configurator knows. It supports the ` +
       `Tiny Tapeout ${BOARD_NAME.RP2040} and ${BOARD_NAME.RP2350}. ${later}`
     );
   }

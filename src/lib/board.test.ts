@@ -122,7 +122,8 @@ describe('unsupportedReason', () => {
   });
   it('explains a board it does not know', () => {
     const why = unsupportedReason(info('ESP32 module'));
-    expect(why).toContain('has a ESP32 module');
+    expect(why).toContain('This board’s microcontroller (ESP32 module) isn’t one the configurator knows.');
+    expect(unsupportedReason(info(''))).toContain('(it didn’t say which)');
     expect(why).toContain('still build, preview and download');
   });
   it('refuses the FPGA board', () => {
