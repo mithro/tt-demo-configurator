@@ -23,4 +23,5 @@ dependency) and runs it, one `tick2()` per clock. `src/sim/` here drives it.
 Worker (`src/sim/sim.worker.ts`) imports it; Vite builds the worker into its own chunk and
 the rest of the app talks to it by `postMessage`. The published worker bundle therefore
 contains GPL-3.0 code, and its source must stay available under GPL-3.0 (this repository
-and the upstream one provide it). Decide whether that is acceptable before deploying.
+and the upstream one provide it). The repository owner approved shipping it this way
+on 2026-11-23.

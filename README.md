@@ -84,5 +84,5 @@ Pushes to `main` are deployed to GitHub Pages by `.github/workflows/pages.yml`.
 
 Apache-2.0, except `src/data/demo.py` (LGPL-2.1, from the firmware) and the simulator
 engine fetched into `src/vendor/vga-playground/` (GPL-3.0; Verilator itself is
-LGPL-3.0/Artistic-2.0). The built simulator worker bundles that GPL-3.0 code: see
-`src/vendor/README.md`.
+LGPL-3.0/Artistic-2.0). The deployed simulator worker bundles that GPL-3.0 code, which
+the repository owner approved on 2026-11-23: see `src/vendor/README.md`.
