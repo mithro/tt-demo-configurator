@@ -47,6 +47,11 @@ export class FakeTransport implements Transport {
         this.raw = false;
       } else if (byte === 0x03) {
         this.code = '';
+        if (this.chatterStops === 'ctrl-c') this.stopChatter();
+      } else if (byte === 0x04 && this.raw && this.code === '') {
+        // a soft reset: MicroPython stays in raw mode and doesn't run main.py
+        if (this.chatterStops !== 'never') this.stopChatter();
+        this.send('OK\r\nMPY: soft reboot\r\nraw REPL; CTRL-B to exit\r\n>');
       } else if (byte === 0x04 && this.raw) {
         const code = this.code;
         this.code = '';
@@ -60,6 +65,20 @@ export class FakeTransport implements Transport {
     }
   }
 
+  private chatterTimer: ReturnType<typeof setInterval> | undefined;
+  private chatterStops: 'ctrl-c' | 'soft-reset' | 'never' = 'never';
+
+  /** Print `text` every `everyMs`, like a running program, until Ctrl-C, a soft reset, or never. */
+  chatter(text: string, everyMs: number, stops: 'ctrl-c' | 'soft-reset' | 'never') {
+    this.chatterStops = stops;
+    this.chatterTimer = setInterval(() => this.send(text), everyMs);
+  }
+
+  stopChatter() {
+    clearInterval(this.chatterTimer);
+    this.chatterTimer = undefined;
+  }
+
   read(): Promise<Uint8Array | null> {
     const b = this.queue.shift();
     if (b) return Promise.resolve(b);
@@ -68,6 +87,7 @@ export class FakeTransport implements Transport {
   }
 
   async close() {
+    this.stopChatter();
     this.closed = true;
     this.push(null);
   }

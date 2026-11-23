@@ -33,6 +33,32 @@ describe('RawRepl', () => {
     expect(t.commands).toEqual([long, 'bb']);
   });
 
+  it('waits for a program that Ctrl-C stops to go quiet', async () => {
+    const t = new FakeTransport((code) => ({ out: `ran ${code}`, err: '' }));
+    t.chatter('tt.uo_out=12\r\n', 20, 'ctrl-c');
+    const r = new RawRepl(t, noSleep);
+    await r.enter();
+    expect(await r.check('x')).toBe('ran x');
+    expect(t.written).not.toContain('\x01\x04');
+  });
+
+  it('soft-resets a board that keeps printing after Ctrl-C (a timer or thread)', async () => {
+    const t = new FakeTransport((code) => ({ out: `ran ${code}`, err: '' }));
+    t.chatter('tt.uo_out=12\r\n', 20, 'soft-reset');
+    const r = new RawRepl(t, noSleep);
+    await r.enter();
+    expect(t.written).toContain('\x01\x04');
+    expect(await r.check('x')).toBe('ran x');
+  });
+
+  it('gives up, saying why, when the board never stops printing', async () => {
+    const t = new FakeTransport(() => ({ out: '', err: '' }));
+    t.chatter('tt.uo_out=12\r\n', 20, 'never');
+    const r = new RawRepl(t, noSleep);
+    await expect(r.enter()).rejects.toThrow(/keeps printing.*tt\.uo_out=12.*Another program or browser tab/);
+    await t.close();
+  });
+
   it('times out on a board that never answers', async () => {
     const r = new RawRepl(new FakeTransport(() => 'hang'), noSleep);
     await r.enter();

@@ -68,6 +68,7 @@ function ConnectHelp() {
           title: 'The port opened but the board didn’t answer as MicroPython:',
           items: [
             <>Press the board’s RESET button, wait a few seconds, and press Connect again.</>,
+            <>If the message says the board keeps printing, something else is talking to it: close the commander app, Thonny or mpremote, or another tab using this app.</>,
             <>If it still fails, the board may not have the Tiny Tapeout MicroPython firmware: flash the stock firmware (hold BOOT while plugging in, then copy the .uf2 onto the drive).</>,
           ],
         };

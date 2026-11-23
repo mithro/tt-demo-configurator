@@ -33,6 +33,9 @@ const CTRL_B = 0x02;
 const CTRL_C = 0x03;
 const CTRL_D = 0x04;
 const WRITE_CHUNK = 256;
+/** How long the board must be silent after Ctrl-C, and how long to wait for that. */
+const QUIET_MS = 250;
+const SETTLE_MS = 1500;
 
 function indexOf(hay: Uint8Array, needle: Uint8Array, from = 0): number {
   outer: for (let i = from; i <= hay.length - needle.length; i++) {
@@ -114,12 +117,54 @@ export class RawRepl {
     return next;
   }
 
-  /** Stop whatever is running and enter raw mode. */
+  /**
+   * Drop what the board sends until it has been silent for `quietMs`; false if it is still
+   * talking after `maxMs`. What was dropped is kept in `lastNoise` for error messages.
+   */
+  private async settle(quietMs: number, maxMs: number): Promise<boolean> {
+    const end = Date.now() + maxMs;
+    let seen = new Uint8Array(0);
+    for (;;) {
+      seen = concat(seen, this.buf).slice(-200);
+      this.buf = new Uint8Array(0);
+      if (!(await this.fill(Date.now() + quietMs))) {
+        this.lastNoise = dec.decode(seen);
+        return true;
+      }
+      if (Date.now() >= end) {
+        this.lastNoise = dec.decode(concat(seen, this.buf).slice(-200));
+        this.buf = new Uint8Array(0);
+        return false;
+      }
+    }
+  }
+
+  private lastNoise = '';
+
+  /**
+   * Stop whatever is running and enter raw mode.
+   *
+   * Ctrl-C stops main.py, but not a timer callback or a second thread, and their prints would
+   * be mixed into every reply. So once stopped the board must go quiet; if it doesn't, it gets
+   * a raw-mode soft reset (which clears timers and threads, and doesn't run main.py), and if it
+   * still keeps talking, something else is using it and the connect fails with that reason.
+   */
   enter(timeoutMs = 5000): Promise<void> {
     return this.run(async () => {
       await this.write(new Uint8Array([0x0d, CTRL_C, CTRL_C]));
       await this.sleep(100);
-      this.buf = new Uint8Array(0);
+      if (!(await this.settle(QUIET_MS, SETTLE_MS))) {
+        await this.write(new Uint8Array([CTRL_C, CTRL_A]));
+        await this.readUntil(BANNER, timeoutMs);
+        await this.write(new Uint8Array([CTRL_D]));
+        await this.readUntil(BANNER, timeoutMs);
+        if (!(await this.settle(QUIET_MS, SETTLE_MS))) {
+          throw new ReplError(
+            `the board keeps printing even after being stopped and soft-reset (last output: ${JSON.stringify(this.lastNoise.slice(-80))}). ` +
+              'Another program or browser tab may be connected to it: close it, or press RESET, and connect again',
+          );
+        }
+      }
       await this.write(new Uint8Array([CTRL_A]));
       await this.readUntil(BANNER, timeoutMs);
     });
