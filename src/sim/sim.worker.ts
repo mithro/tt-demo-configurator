@@ -6,7 +6,7 @@
 import { fetchDesignSources, SourceError } from '~/lib/simSources';
 import { VGA } from '~/lib/tinyVga';
 import wasmUrl from '~/vendor/vga-playground/verilator/verilator_bin.wasm?url';
-import { onceUnlessFailed } from './cache';
+import { Lru, onceUnlessFailed } from './cache';
 import type { FromWorker, SimDesign, SimEntry, SimStats, ToWorker } from './protocol';
 import { type HDLModuleWASM, instantiate, verilate } from './verilate';
 import { VgaSim } from './vgaSim';
@@ -24,8 +24,12 @@ const verilatorWasm = onceUnlessFailed(() =>
 
 /** fetch and engine failures may be temporary, so they aren't cached; compile failures are */
 type Built = { mod: HDLModuleWASM } | { error: string; stage: 'fetch' | 'engine' | 'compile' };
-/** compiled designs by repo@commit:macro; failures are cached too */
-const built = new Map<string, Promise<Built>>();
+/** compiled designs (and compile failures) by repo@commit:macro, the few most recent */
+const KEEP_COMPILED = 4;
+const built = new Lru<string, Promise<Built>>(KEEP_COMPILED, (_key, p) => {
+  // free the evicted model's memory, unless the running preview still uses it
+  void p.then((b) => 'mod' in b && b.mod !== cur?.mod && b.mod.dispose());
+});
 const keyOf = (d: SimDesign) => `${d.repo}@${d.commit}:${d.macro}`;
 
 async function build(d: SimDesign, token: number): Promise<Built> {
@@ -55,6 +59,7 @@ async function build(d: SimDesign, token: number): Promise<Built> {
 interface Current {
   token: number;
   sim: VgaSim | null;
+  mod: HDLModuleWASM | null;
   running: boolean;
   /** what the app last asked for */
   want: boolean;
@@ -146,7 +151,7 @@ function setRunning(c: Current, run: boolean) {
 }
 
 async function load(token: number, design: SimDesign, entry: SimEntry, run: boolean) {
-  const c: Current = { token, sim: null, want: run, running: false, runMs: 0, since: 0, window: { t: 0, frames: 0, ticks: 0 }, stats: { fps: 0, speed: 0 } as SimStats };
+  const c: Current = { token, sim: null, mod: null, want: run, running: false, runMs: 0, since: 0, window: { t: 0, frames: 0, ticks: 0 }, stats: { fps: 0, speed: 0 } as SimStats };
   cur = c;
   if (!entry.clock_hz) {
     post({ type: 'status', token, state: 'failed', reason: 'this entry stops the clock (clock_hz 0), so the design shows nothing' });
@@ -167,6 +172,7 @@ async function load(token: number, design: SimDesign, entry: SimEntry, run: bool
     return;
   }
   try {
+    c.mod = b.mod;
     c.sim = new VgaSim(b.mod, entry, entry.clock_hz);
     // a first frame to look at even while held
     c.sim.runFrame(c.sim.frameClocks * 2);
