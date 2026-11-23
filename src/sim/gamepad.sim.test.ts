@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Step } from '~/lib/demoFile';
+import { STEP_RESET_MS } from '~/lib/stepSchedule';
 import { GAMEPAD_BUTTONS, type GamepadButton } from '~/lib/gamepad';
 import { type HDLModuleWASM, instantiate, verilate } from './verilate';
 import { VgaSim } from './vgaSim';
@@ -73,4 +74,19 @@ describe('the gamepad_pmod Verilog decodes the simulated Pmod', () => {
       expect(decoded(mod)).toEqual({ buttons: ['left', 'x'], present: [true, true] });
     }, 120000);
   }
+
+  // The board resends the held report after each end-of-pass reset. Here the first step is a
+  // wait, so just after the reset nothing but that resend can make the decoder see 'a'.
+  it('resends the held report after the reset', () => {
+    const steps: Step[] = [{ wait_ms: 2 }, { gamepad: [{ buttons: ['a'] }] }, { wait_ms: 2 }];
+    const sim = new VgaSim(mod, { ui_in: 0, steps }, 1_000_000);
+    runTo(sim, 1.9);
+    expect(decoded(mod)).toEqual({ buttons: [], present: [false, false] });
+    runTo(sim, 3.9);
+    expect(decoded(mod)).toEqual({ buttons: ['a'], present: [true, false] });
+    // the pass ends at 4 ms and the design is held in reset for STEP_RESET_MS; then the
+    // resend (about 1 ms), while step 0 (the wait) runs
+    runTo(sim, 4 + STEP_RESET_MS + 1.5);
+    expect(decoded(mod)).toEqual({ buttons: ['a'], present: [true, false] });
+  }, 120000);
 });
