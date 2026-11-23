@@ -173,7 +173,16 @@ export function StepEditor(props: { index: number }) {
       </Stack>
       <Show when={script()}>
         <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center' }}>
-          <Button size="small" variant="contained" color="success" onClick={() => setSteps(script()!.steps)} title={script()!.note}>
+          <Button
+            size="small"
+            variant="contained"
+            color="success"
+            onClick={() => {
+              const n = steps().length;
+              if (!n || window.confirm(`Replace this entry's ${n} steps with the example script?`)) setSteps(script()!.steps);
+            }}
+            title={script()!.note}
+          >
             Use the example script: {script()!.title}
           </Button>
           <Typography variant="caption" sx={{ opacity: 0.7 }}>

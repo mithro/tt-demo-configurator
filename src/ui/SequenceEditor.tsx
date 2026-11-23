@@ -184,7 +184,7 @@ function EntryEditor(props: { index: number }) {
           <Typography variant="caption" sx={{ fontFamily: 'monospace', mr: 1 }}>
             ui_in = 0b{e().ui_in.toString(2).padStart(8, '0')}
           </Typography>
-          <ByteField value={e().ui_in} onChange={(v) => set({ ui_in: v })} />
+          <ByteField value={e().ui_in} onChange={(v) => set({ ui_in: usesGamepad(e().steps) ? v & ~GAMEPAD_PINS : v })} />
         </Stack>
         <Bits value={e().ui_in} entry={e()} onChange={(v) => set({ ui_in: v })} locked={usesGamepad(e().steps) ? GAMEPAD_PINS : 0} />
 
