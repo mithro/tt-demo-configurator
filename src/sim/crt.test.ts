@@ -27,7 +27,7 @@ const pattern = (x: number, y: number) => ((x >> 4) ^ (y >> 3)) & 0x77;
 
 describe('Crt', () => {
   it('draws the active area of a standard active-low signal', () => {
-    const crt = new Crt(1);
+    const crt = new Crt(25_175_000);
     expect(run(crt, 3, 1, false, pattern)).toBe(3);
     expect(crt.standard()).toBe(true);
     expect(crt.stats()).toMatchObject({ lineClocks: 800, frameLines: 525, hsyncActiveHigh: false, vsyncActiveHigh: false });
@@ -36,7 +36,7 @@ describe('Crt', () => {
   });
 
   it('follows active-high sync too', () => {
-    const crt = new Crt(1);
+    const crt = new Crt(25_175_000);
     run(crt, 3, 1, true, pattern);
     expect(crt.stats()).toMatchObject({ hsyncActiveHigh: true, vsyncActiveHigh: true });
     expect(crt.pixels[100 * 640 + 200]).toBe(LUT[pattern(200, 100)]);
@@ -44,7 +44,7 @@ describe('Crt', () => {
   });
 
   it('draws a 50 MHz design (two clocks per pixel) at full size', () => {
-    const crt = new Crt(2);
+    const crt = new Crt(50_350_000);
     run(crt, 3, 2, false, pattern);
     expect(crt.standard()).toBe(true);
     expect(crt.stats().lineClocks).toBe(1600);
@@ -52,10 +52,24 @@ describe('Crt', () => {
     expect(crt.pixels[479 * 640 + 639]).toBe(LUT[pattern(639, 479)]);
   });
 
+  it('samples by time, so a line of any length fills the screen', () => {
+    // 800-clock lines clocked at 50 MHz: the monitor guessed 1600 clocks, then measures 800
+    const crt = new Crt(50_350_000);
+    run(crt, 3, 1, false, pattern);
+    expect(crt.pixels[479 * 640 + 639]).toBe(LUT[pattern(639, 479)]);
+    expect(crt.pixels[200 * 640 + 300]).toBe(LUT[pattern(300, 200)]);
+  });
+
   it('flags timing a monitor would not expect', () => {
-    // a 25 MHz design fed to a 2-clocks-per-pixel monitor: lines are half as long as expected
-    const half = new Crt(2);
-    run(half, 2, 1, false, pattern);
-    expect(half.standard()).toBe(false);
+    // 800-clock lines at 50 MHz: a 62.9 kHz line rate
+    const fast = new Crt(50_350_000);
+    run(fast, 2, 1, false, pattern);
+    expect(fast.standard()).toBe(false);
+    expect(fast.stats().lineHz).toBeCloseTo(62_937.5, 0);
+    // 1600-clock lines at 48 MHz: 30 kHz, 4.7% slow
+    const slow = new Crt(48_000_000);
+    run(slow, 2, 2, false, pattern);
+    expect(slow.standard()).toBe(false);
+    expect(slow.pixels[479 * 640 + 639]).toBe(LUT[pattern(639, 479)]);
   });
 });
