@@ -7,8 +7,6 @@ import { VGA } from '~/lib/tinyVga';
 import { Crt, LINE_HZ } from './crt';
 import type { HDLModuleWASM } from './verilate';
 
-/** The firmware holds the project in reset this long when the steps run out. */
-const STEP_RESET_MS = 2;
 /** Clocks between checks of the steps' timeline (~40 µs at 25 MHz). */
 const CHUNK = 1024;
 
@@ -18,9 +16,9 @@ export class VgaSim {
   ticks = 0;
   private uoOff: number;
   private schedule: Schedule;
-  private resets = 0;
   private ui = -1;
-  private holdUntil = 0;
+  /** rst_n held low by the steps' reset */
+  private held = false;
 
   constructor(
     private mod: HDLModuleWASM,
@@ -40,7 +38,7 @@ export class VgaSim {
     const m = this.mod;
     m.powercycle();
     this.ticks = 0;
-    this.resets = 0;
+    this.held = false;
     this.crt = new Crt(this.clockHz);
     this.apply();
     m.state.ena = 1;
@@ -61,19 +59,15 @@ export class VgaSim {
 
   /** Bring ui_in and reset in line with the steps at the current simulated time. */
   private apply() {
-    const { ui_in, resets } = inputsAt(this.entry, this.simMs(), this.schedule);
+    // the schedule includes the 2 ms resets between passes, so it keeps pace with the board
+    const { ui_in, inReset } = inputsAt(this.entry, this.simMs(), this.schedule);
     if (ui_in !== this.ui) {
       this.mod.state.ui_in = ui_in;
       this.ui = ui_in;
     }
-    if (resets !== this.resets) {
-      this.resets = resets;
-      this.mod.state.rst_n = 0;
-      this.holdUntil = this.ticks + Math.round((STEP_RESET_MS * this.clockHz) / 1000);
-    }
-    if (this.holdUntil && this.ticks >= this.holdUntil) {
-      this.mod.state.rst_n = 1;
-      this.holdUntil = 0;
+    if (inReset !== this.held) {
+      this.mod.state.rst_n = inReset ? 0 : 1;
+      this.held = inReset;
     }
   }
 
