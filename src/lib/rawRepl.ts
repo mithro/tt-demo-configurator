@@ -175,10 +175,11 @@ export class RawRepl {
     return this.run(async () => {
       await this.write(enc.encode(code));
       await this.write(new Uint8Array([CTRL_D]));
-      const ok = await this.readUntil(enc.encode('OK'), Math.min(timeoutMs, 5000));
-      if (ok.length && dec.decode(ok).trim() !== '>' && dec.decode(ok).trim() !== '') {
-        throw new ReplError(`unexpected reply from the board: ${JSON.stringify(dec.decode(ok))}`);
-      }
+      // Anything before "OK" was printed while the board waited for this command: a running
+      // demo's timer callbacks (an FPGA board's bitstream loader prints a dozen lines on
+      // every switch). It isn't this command's output, so it is dropped.
+      const before = await this.readUntil(enc.encode('OK'), Math.min(timeoutMs, 5000));
+      if (before.length) this.lastNoise = dec.decode(before.slice(-200));
       const out = dec.decode(await this.readUntil(new Uint8Array([CTRL_D]), timeoutMs));
       const err = dec.decode(await this.readUntil(new Uint8Array([CTRL_D]), timeoutMs));
       await this.readUntil(enc.encode('>'), 2000);

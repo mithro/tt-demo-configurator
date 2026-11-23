@@ -59,6 +59,16 @@ describe('RawRepl', () => {
     await t.close();
   });
 
+  it('drops what a running demo printed before the board took the command', async () => {
+    // an FPGA board's bitstream loader prints a dozen lines on every switch, from a timer
+    const t = new FakeTransport((code) => ({ out: `ran ${code}`, err: '' }));
+    const r = new RawRepl(t, noSleep);
+    await r.enter();
+    t.beforeOk = 'ttboard.fpga.fpga_mux: Enable design tt_um_vga_pattern\r\nState machine activated\r\n';
+    expect(await r.check('x')).toBe('ran x');
+    expect(await r.check('y')).toBe('ran y');
+  });
+
   it('times out on a board that never answers', async () => {
     const r = new RawRepl(new FakeTransport(() => 'hang'), noSleep);
     await r.enter();

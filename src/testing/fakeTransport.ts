@@ -56,7 +56,9 @@ export class FakeTransport implements Transport {
         const code = this.code;
         this.code = '';
         this.commands.push(code);
-        this.send('OK');
+        // what a timer callback printed while the board waited for this command
+        this.send(this.beforeOk + 'OK');
+        this.beforeOk = '';
         const r = await this.handle(code);
         if (r !== 'hang') this.send(`${r.out}\x04${r.err}\x04>`);
       } else if (this.raw) {
@@ -64,6 +66,9 @@ export class FakeTransport implements Transport {
       }
     }
   }
+
+  /** Text the board prints just before its next "OK", as a demo's timer callback can. */
+  beforeOk = '';
 
   private chatterTimer: ReturnType<typeof setInterval> | undefined;
   private chatterStops: 'ctrl-c' | 'soft-reset' | 'never' = 'never';
