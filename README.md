@@ -13,6 +13,9 @@ talks to the board over WebSerial).
 - Preview the sequence without a board, try it on a board from RAM (nothing written), then
   make it permanent, turn it off, or put the board back to exactly stock.
 - Works with the stock firmware (it installs a small helper) and with the demo-mode firmware.
+- Works with both kinds of demoboard: the RP2350 **Tiny Tapeout Demoboard: ETR** (firmware
+  SDK 3.x) and the RP2040 demoboards of TT04 to TT08 (e.g. "TinyTapeout 06+ Demoboard",
+  SDK 2.0.0 to 2.0.4).
 - Ready-made sequences for the four boards shown at the Shenzhen open-silicon meetup (2026-11).
 
 ## The demo.json format
@@ -40,7 +43,14 @@ in the firmware.
 | Stock firmware | the helper this app installs: `/demo.py`, and a `/main.py` that runs the original (kept as `/main_stock.py`) and then the demo |
 
 `/demo.py` is a pinned copy of the firmware's `ttboard/demo.py` (LGPL-2.1, like the firmware),
-in `src/data/demo.py`.
+in `src/data/demo.py`. RP2040 boards get its port to SDK 2.x, `src/data/demo-sdk2.py`, made
+from it by `scripts/port-demo-sdk2.py` (three small changes; a test checks nothing else
+differs). The demo-mode firmware is RP2350 only.
+
+| Microcontroller | SDK | Stock firmware |
+|---|---|---|
+| RP2350 (Demoboard: ETR) | 3.0.0 to 3.1.1 | [v3.1.1](https://github.com/TinyTapeout/tt-micropython-firmware/releases/tag/v3.1.1), `tt-demo-rp2350-v3.1.1.uf2` |
+| RP2040 (TT04/05, TT06+ demoboards) | 2.0.0 to 2.0.4 | [v2.0.4](https://github.com/TinyTapeout/tt-micropython-firmware/releases/tag/v2.0.4), `tt-demo-rp2040-v2.0.4.uf2` (the last RP2040 release) |
 
 ## Development
 
@@ -56,10 +66,17 @@ sends in CPython, with `/` mapped to a scratch directory. The validator's fixtur
 `test/fixtures/` carry the errors the firmware itself reports
 (`scripts/firmware-errors.py`), so the app and the board agree word for word.
 
+`src/testing/stubTtboard.ts` stands in for the SDK (3.x, or 2.x with `mcu: 'RP2040'`). For the
+RP2040 boards there is also a test against the real SDK 2.x: `uv run --no-project
+scripts/fetch-sdk2.py [tag]` puts it in `tmp/sdk2/`, and `src/lib/sdk2.real.test.ts` then
+boots its stock `main.py` in the fake board (only PWM, timers and the chip ROM are faked)
+and runs detect, validate, RAM runs, the helper and reset-to-stock against it. CI fetches
+v2.0.4; without `tmp/sdk2/` the test is skipped.
+
 Data refresh scripts:
 
 - `scripts/update-videos.py`: the trimmed VGA-videos index (`src/data/videos.json`).
-- `scripts/update-stock-main.py`: the stock `main.py` of every SDK 3.x release.
+- `scripts/update-stock-main.py`: the stock `main.py` of every SDK 2.x and 3.x release.
 - `scripts/make-shenzhen-demos.py`: the ready-made sequences.
 - `scripts/check-micropython.py`: compile the board-side Python with `mpy-cross`.
 
@@ -67,4 +84,5 @@ Pushes to `main` are deployed to GitHub Pages by `.github/workflows/pages.yml`.
 
 ## Licence
 
-Apache-2.0, except `src/data/demo.py` (LGPL-2.1, from the firmware).
+Apache-2.0, except `src/data/demo.py` and `src/data/demo-sdk2.py` (LGPL-2.1, from the
+firmware) and the stock `main.py` copies in `src/data/stock-main/` (the firmware's).

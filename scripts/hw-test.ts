@@ -4,6 +4,10 @@
 // serial bridge (WebSocket), instead of WebSerial in a browser.
 //
 //   npx vite-node scripts/hw-test.ts -- ws://127.0.0.1:18709/serial <shuttle> [--permanent] [--skip=584,590]
+//       [--file=path/to/sequence.demo.json] [--mcu=RP2040|RP2350]
+//
+// The sequence is src/data/demos/<shuttle>.demo.json unless --file names another (there is
+// no bundled one for tt04..tt07). --mcu checks the board is the kind expected.
 //
 // --skip leaves those addresses out of what is run (the whole file is still validated):
 // for test rigs whose wiring would fight a design's outputs, like the fpgas.online Pmod HAT.
@@ -16,9 +20,9 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import WebSocket from 'ws';
-import { detect, readFile, removeFile, writeFile } from '../src/lib/board';
+import { detect, readFile, removeFile, unsupportedReason, writeFile } from '../src/lib/board';
 import { formatDemo, parseDemoText } from '../src/lib/demoFile';
-import { planMakePermanent, planResetToStock } from '../src/lib/helper';
+import { HELPER_DEMO_PY, planMakePermanent, planResetToStock } from '../src/lib/helper';
 import { applyOps, boardValidate, runFromRam, softReboot, stopDemo } from '../src/lib/live';
 import { RawRepl, Transport } from '../src/lib/rawRepl';
 
@@ -74,14 +78,17 @@ async function main() {
   const args = process.argv.slice(2).filter((a) => a !== '--');
   const [url, shuttle] = args;
   const permanent = args.includes('--permanent');
+  const fileArg = args.find((a) => a.startsWith('--file='))?.slice(7);
+  const mcuArg = args.find((a) => a.startsWith('--mcu='))?.slice(6);
   const skip = new Set((args.find((a) => a.startsWith('--skip='))?.slice(7) ?? '').split(',').filter(Boolean).map(Number));
   const repl = new RawRepl(await WsTransport.open(url));
   await repl.enter();
 
   let info = await detect(repl);
-  console.log(`board: ${info.machine} SDK ${info.sdk} shuttle ${info.shuttle} rom ${JSON.stringify(info.rom)} projects ${info.projects} firmware ${info.firmware} demo=${info.demoSetting} mode ${info.mode} dipOn ${JSON.stringify(info.dipOn)} errors ${JSON.stringify(info.errors)}`);
+  console.log(`board: ${info.machine} (${info.mcu}) SDK ${info.sdk} shuttle ${info.shuttle} rom ${JSON.stringify(info.rom)} projects ${info.projects} firmware ${info.firmware} demo=${info.demoSetting} mode ${info.mode} dipOn ${JSON.stringify(info.dipOn)} errors ${JSON.stringify(info.errors)}`);
   check('detects the chip', info.shuttle === shuttle, String(info.shuttle));
-  check('detects an RP2350', info.rp2350, info.machine);
+  check('detects the microcontroller', info.mcu !== null && (!mcuArg || info.mcu === mcuArg), `${info.mcu} from "${info.machine}"`);
+  check('the app supports this board', unsupportedReason(info) === null, unsupportedReason(info) ?? '');
   check('reads the DIP switches', Array.isArray(info.dipOn), JSON.stringify(info.dipOn));
 
   const backupDir = path.resolve('tmp', `hw-backup-${shuttle}`);
@@ -96,7 +103,7 @@ async function main() {
   await removeFile(repl, '/tdc_scratch.txt');
   check('scratch file removed', (await readFile(repl, '/tdc_scratch.txt')) === null);
 
-  const text = readFileSync(path.resolve('src/data/demos', `${shuttle}.demo.json`), 'utf8');
+  const text = readFileSync(fileArg ? path.resolve(fileArg) : path.resolve('src/data/demos', `${shuttle}.demo.json`), 'utf8');
   const { file } = parseDemoText(text, shuttle);
   const errs = await boardValidate(repl, info, formatDemo(file!));
   check('board accepts the bundled sequence', errs.length === 0, errs.join('; '));
@@ -118,6 +125,10 @@ async function main() {
     console.log(`make permanent: ${ops.map((o) => `${o.op} ${o.path}`).join(', ')}`);
     await applyOps(repl, ops);
     info = await detect(repl);
+    if (info.firmware !== 'custom') {
+      const helper = (await readFile(repl, '/demo.py')) ?? '';
+      check(`the ${info.mcu} helper is on the board`, helper === HELPER_DEMO_PY[info.mcu!], `${helper.length} bytes`);
+    }
     check('helper installed and demo on', info.firmware === (info.firmware === 'custom' ? 'custom' : 'helper') && info.demoSetting, `${info.firmware} demo=${info.demoSetting}`);
 
     await softReboot(repl);

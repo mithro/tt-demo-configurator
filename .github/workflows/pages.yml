@@ -25,6 +25,8 @@ jobs:
           cache: npm
       - uses: astral-sh/setup-uv@v5
       - run: npm ci
+      # the real SDK 2.x, for src/lib/sdk2.real.test.ts (RP2040 demoboards)
+      - run: uv run --no-project scripts/fetch-sdk2.py
       - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3

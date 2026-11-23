@@ -1,5 +1,7 @@
 # Sent by the Tiny Tapeout demo configurator: report what this board is and how its
-# demo mode is set up, as one line "DETECT:<json>". Read-only.
+# demo mode is set up, as a line "DETECT:<json>" and then one "FILE:<json>" line per
+# file, so only one file is in RAM at a time (the RP2040 has about half the RP2350's).
+# Read-only. Works with SDK 2.x (RP2040 demoboards) and 3.x (RP2350).
 def _tt_demo_detect():
     import gc, json, os, sys
     gc.collect()
@@ -13,6 +15,29 @@ def _tt_demo_detect():
                 return f.read()
         except OSError:
             return None
+
+    def hashed(path):
+        # the app only needs to know whether the board's copy is the one it has:
+        # None if there is no file, else {'sha256': hex digest, or None if it couldn't
+        # be hashed, with the reason in errors, rather than lose the whole report}
+        import hashlib, binascii
+        try:
+            f = open(path, 'rb')
+        except OSError:
+            return None
+        try:
+            h = hashlib.sha256()
+            while True:
+                c = f.read(512)
+                if not c:
+                    break
+                h.update(c)
+            return {'sha256': binascii.hexlify(h.digest()).decode()}
+        except Exception as e:
+            r['errors'].append('could not hash %s: %r' % (path, e))
+            return {'sha256': None}
+        finally:
+            f.close()
 
     r['machine'] = getattr(sys.implementation, '_machine', '')
     r['release'] = None
@@ -38,19 +63,25 @@ def _tt_demo_detect():
         except Exception as e:
             r['errors'].append('no shuttle: %s' % e)
         try:
-            c = tt.chip_ROM.contents
-            r['rom'] = {k: str(v) for k, v in c.items()} if isinstance(c, dict) else str(c)
+            rom = tt.chip_ROM
+            if hasattr(rom, 'contents'):
+                c = rom.contents
+                r['rom'] = {k: str(v) for k, v in c.items()} if isinstance(c, dict) else str(c)
+            else:
+                # force_shuttle in config.ini: the SDK never reads the ROM
+                r['rom'] = {'shuttle': str(rom.shuttle), 'repo': str(rom.repo), 'commit': str(rom.commit)}
         except Exception as e:
             r['errors'].append('no chip ROM: %s' % e)
         try:
             r['projects'] = len(tt.shuttle)
         except Exception as e:
             r['errors'].append('no project count: %s' % e)
-    # The ui_in DIP switches: each one that is on holds its input high and beats the RP2350,
-    # so the demo's inputs never reach the design. The SDK's own test: an input that reads
-    # high is a switch that is on (and it then leaves that pin undriven). Pins the RP2350 is
-    # driving are released for a moment to read them, then driven again, unless the switch
-    # turns out to be on, in which case they stay inputs as the SDK would leave them.
+    # The ui_in DIP switches: each one that is on holds its input high and beats the RP2,
+    # so the demo's inputs never reach the design. The SDK's own test (2.x and 3.x): an
+    # input that reads high is a switch that is on (and it then leaves that pin undriven).
+    # Pins the RP2 is driving are released for a moment to read them, then driven again,
+    # unless the switch turns out to be on, in which case they stay inputs as the SDK
+    # would leave them.
     r['mode'] = None
     r['dip_on'] = None
     if tt is not None:
@@ -93,10 +124,16 @@ def _tt_demo_detect():
     except Exception as e:
         r['demo_setting'] = False
         r['errors'].append('config.ini: %s' % e)
-    for key, path in (('main', '/main.py'), ('main_stock', '/main_stock.py'), ('config_ini', '/config.ini'),
-                      ('demo_json', '/demo.json'), ('demo_py', '/demo.py'), ('vga_cycle', '/vga_cycle.py')):
-        r[key] = text(path)
+    r['demo_py'] = hashed('/demo.py')
     print('DETECT:' + json.dumps(r))
+    r = None
+    for key, path in (('main', '/main.py'), ('main_stock', '/main_stock.py'), ('config_ini', '/config.ini'),
+                      ('demo_json', '/demo.json'), ('vga_cycle', '/vga_cycle.py')):
+        gc.collect()
+        t = text(path)
+        print('FILE:' + json.dumps([key, t]))
+        t = None
+    print('DETECT-END')
 
 _tt_demo_detect()
 del _tt_demo_detect

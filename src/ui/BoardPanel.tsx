@@ -3,7 +3,7 @@
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, Link, Stack, Typography } from '@suid/material';
 import { For, JSX, Match, Show, Switch } from 'solid-js';
 import { BoardInfo, FirmwareType, unsupportedReason } from '~/lib/board';
-import { CUSTOM_FIRMWARE, LATEST_STOCK, STOCK_RELEASE_URL, upgradeAvailable } from '~/lib/firmware';
+import { CUSTOM_FIRMWARE, STOCK_FIRMWARE, upgradeFor } from '~/lib/firmware';
 import * as act from './actions';
 import { state as s } from './state';
 
@@ -104,13 +104,12 @@ export function BoardPanel() {
           fallback={
             <Stack spacing={1}>
               <Typography variant="body2">
-                Not connected. Plug in a <b>Tiny Tapeout Demoboard: ETR</b> (the RP2350 demoboard) and press{' '}
-                <b>Connect</b> at the top to test a sequence on it or install it. Close the commander app first: only one
-                page can use the board.
+                Not connected. Plug in a Tiny Tapeout demoboard and press <b>Connect</b> at the top to test a
+                sequence on it or install it. Close the commander app first: only one page can use the board.
               </Typography>
               <Typography variant="caption">
-                The older RP2040 demoboards (TT04–TT08 era) are not supported yet; you can still build, preview and
-                download sequences for them.
+                Both kinds work: the <b>Tiny Tapeout Demoboard: ETR</b> (RP2350, firmware SDK 3.x) and the RP2040
+                demoboards of TT04–TT08 (e.g. &ldquo;TinyTapeout 06+ Demoboard&rdquo;, firmware SDK 2.0.x).
               </Typography>
               <ConnectHelp />
               <Show when={act.savedBackup()}>
@@ -131,10 +130,12 @@ export function BoardPanel() {
                 <Row label="Controller">{info().machine || 'unknown'}</Row>
                 <Row label="Firmware">
                   SDK {info().sdk ?? 'unknown'}{' '}
-                  <Show when={!unsupportedReason(info()) && upgradeAvailable(info().sdk)}>
-                    <Link href={STOCK_RELEASE_URL} target="_blank">
-                      (upgrade to {LATEST_STOCK} available)
-                    </Link>
+                  <Show when={!info().isFpga && upgradeFor(info().mcu, info().sdk)}>
+                    {(fw) => (
+                      <Link href={fw().url} target="_blank">
+                        (upgrade to {fw().latest} available: {fw().uf2})
+                      </Link>
+                    )}
                   </Show>
                 </Row>
                 <Show
@@ -233,13 +234,15 @@ export function BoardPanel() {
                   <Typography variant="body2">
                     Flash firmware: save the board&apos;s files, reboot into the bootloader, then copy the .uf2 onto the
                     drive that appears.{' '}
-                    <Link href={STOCK_RELEASE_URL} target="_blank">
-                      Stock {LATEST_STOCK}
+                    <Link href={STOCK_FIRMWARE[info().mcu!].url} target="_blank">
+                      Stock {STOCK_FIRMWARE[info().mcu!].latest} ({STOCK_FIRMWARE[info().mcu!].uf2})
                     </Link>
-                    {' · '}
-                    <Link href={CUSTOM_FIRMWARE.url} target="_blank">
-                      Demo-mode firmware {CUSTOM_FIRMWARE.released ? '' : '(not released yet: build from the branch)'}
-                    </Link>
+                    <Show when={info().mcu === CUSTOM_FIRMWARE.mcu}>
+                      {' · '}
+                      <Link href={CUSTOM_FIRMWARE.url} target="_blank">
+                        Demo-mode firmware {CUSTOM_FIRMWARE.released ? '' : '(not released yet: build from the branch)'}
+                      </Link>
+                    </Show>
                   </Typography>
                   <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
                     <Button size="small" onClick={act.backupBoardFiles} disabled={busy()}>

@@ -2,7 +2,7 @@
 // App state: the sequence being edited, the shuttle's projects, and the connected board.
 import { createMemo, createRoot, createSignal } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
-import { BoardInfo, detect } from '~/lib/board';
+import { BoardInfo, detect, unsupportedReason } from '~/lib/board';
 import { DemoFile, Entry, entryKey, formatDemo, validateDemo } from '~/lib/demoFile';
 import { RawRepl, SerialTransport } from '~/lib/rawRepl';
 import { indexLookup, loadShuttle, loadShuttles, Project, projectKey, ShuttleInfo } from '~/lib/shuttleIndex';
@@ -189,7 +189,7 @@ function makeState() {
     }
     const info = await refreshBoard();
     // an empty sequence follows the board's chip; a sequence being edited is left alone
-    if (info?.shuttle && !info.isFpga && info.rp2350 && !seq.projects.length) await chooseShuttle(info.shuttle);
+    if (info?.shuttle && info.shuttle !== 'unknown' && !unsupportedReason(info) && !seq.projects.length) await chooseShuttle(info.shuttle);
   }
 
   function dropped() {
