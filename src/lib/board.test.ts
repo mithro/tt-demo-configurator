@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PythonBoard, startPythonBoard } from '~/testing/pythonBoard';
 import { stubTtboard } from '~/testing/stubTtboard';
-import { detect, HELPER_MARKER, parseDetect, readFile, removeFile, unsupportedReason, writeFile } from './board';
+import { detect, dieName, HELPER_MARKER, parseDetect, readFile, removeFile, unsupportedReason, writeFile } from './board';
 import { planInstallHelper, planResetToStock } from './helper';
 import { RawRepl } from './rawRepl';
 import { sha256Hex } from './sha256';
@@ -92,6 +92,21 @@ describe('detect', () => {
   it('sees the demo-mode firmware', async () => {
     await repl.check("import sys, types\nsys.modules['ttboard.demo'] = types.ModuleType('ttboard.demo')\n");
     expect((await detect(repl)).firmware).toBe('custom');
+  });
+});
+
+describe('dieName', () => {
+  const gf = (commit: string) => ({ shuttle: 'ttgf0p2', rom: { shuttle: 'ttgf0p2', repo: 'TinyTapeout/tinytapeout-gf-0p2', commit } });
+  it('names the two GF 0p2 dies by ROM commit', () => {
+    expect(dieName(gf('7416232b'))).toBe('TTP2');
+    expect(dieName(gf('FF701BAA'))).toBe('TTPG (power-gated)');
+  });
+  it('gives no name for other commits, other shuttles, or an unreadable ROM', () => {
+    expect(dieName(gf('12345678'))).toBeNull();
+    expect(dieName(gf(''))).toBeNull();
+    expect(dieName({ shuttle: 'ttsky25a', rom: { commit: '7416232b' } })).toBeNull();
+    expect(dieName({ shuttle: 'ttgf0p2', rom: 'unknown' })).toBeNull();
+    expect(dieName({ shuttle: 'ttgf0p2', rom: null })).toBeNull();
   });
 });
 

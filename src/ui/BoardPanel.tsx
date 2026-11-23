@@ -2,7 +2,7 @@
 // The connected board: what it is, how its demo mode is set up, and what can be done.
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, Link, Stack, Typography } from '@suid/material';
 import { For, JSX, Match, Show, Switch } from 'solid-js';
-import { BoardInfo, FirmwareType, unsupportedReason } from '~/lib/board';
+import { BoardInfo, dieName, FirmwareType, unsupportedReason } from '~/lib/board';
 import { CUSTOM_FIRMWARE, STOCK_FIRMWARE, upgradeFor } from '~/lib/firmware';
 import * as act from './actions';
 import { state as s } from './state';
@@ -126,7 +126,9 @@ export function BoardPanel() {
             {(info) => (
               <Stack spacing={1}>
                 <Row label="Chip">
-                  <b>{info().isFpga ? 'FPGA board' : (info().shuttle ?? 'unknown')}</b> <span style={{ opacity: 0.7 }}>{romText(info())}</span>
+                  <b>{info().isFpga ? 'FPGA board' : (info().shuttle ?? 'unknown')}</b>
+                  <Show when={!info().isFpga && dieName(info())}>{(d) => <b> · {d()}</b>}</Show>{' '}
+                  <span style={{ opacity: 0.7 }}>{romText(info())}</span>
                 </Row>
                 <Row label="Controller">{info().machine || 'unknown'}</Row>
                 <Row label="Firmware">

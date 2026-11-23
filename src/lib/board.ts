@@ -168,6 +168,22 @@ export async function renameFile(repl: RawRepl, from: string, to: string): Promi
   await repl.check(`import os\nos.rename(${py(from)},${py(to)})\n`);
 }
 
+/**
+ * Dies that share one shuttle name (and so one project list and one /demo.json), told apart by
+ * the ROM's commit: the GF 0p2 shuttle went out as TTP2 and as the power-gated TTPG.
+ */
+const DIES: { shuttle: string; commit: string; name: string }[] = [
+  { shuttle: 'ttgf0p2', commit: '7416232b', name: 'TTP2' },
+  { shuttle: 'ttgf0p2', commit: 'ff701baa', name: 'TTPG (power-gated)' },
+];
+
+/** The die's own name when its shuttle had more than one, e.g. "TTPG (power-gated)"; else null. */
+export function dieName(b: Pick<BoardInfo, 'shuttle' | 'rom'>): string | null {
+  const commit = b.rom && typeof b.rom === 'object' ? (b.rom.commit ?? '').toLowerCase() : '';
+  if (!commit) return null;
+  return DIES.find((d) => d.shuttle === b.shuttle && commit.startsWith(d.commit))?.name ?? null;
+}
+
 const BOARD_NAME: Record<Mcu, string> = {
   RP2040: 'RP2040 demoboard (TT04/05, TT06+)',
   RP2350: 'RP2350 demoboard (Tiny Tapeout Demoboard: ETR)',
