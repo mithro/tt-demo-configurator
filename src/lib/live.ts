@@ -12,7 +12,7 @@ import type { BoardInfo } from './board';
 import { removeFile, writeFile } from './board';
 import type { DemoFile, Entry } from './demoFile';
 import type { FileOp } from './helper';
-import { helperDemoPy, helperDemoPyCurrent, helperDemoPySha256 } from './helper';
+import { FPGA_DRIVE_INPUTS, helperDemoPy, helperDemoPyCurrent, helperDemoPySha256 } from './helper';
 import { RawRepl, ReplError } from './rawRepl';
 
 const SRC_CHUNK = 2048;
@@ -119,7 +119,7 @@ export async function runFromRam(repl: RawRepl, info: LiveBoard, file: DemoFile)
   if (errors.length) return errors;
   await stopDemo(repl);
   const out = await repl.check(
-    `${TT}_r = _tdc_demo['validate'](json.loads(${JSON.stringify(text)}), tt.shuttle.run, tt.shuttle)\n` +
+    `${TT}${FPGA_DRIVE_INPUTS}_r = _tdc_demo['validate'](json.loads(${JSON.stringify(text)}), tt.shuttle.run, tt.shuttle)\n` +
       `tt.demo = _tdc_demo['DemoRunner'](tt, _r[0], path='(configurator, RAM)')\nprint('STARTED:%s' % tt.demo.start())\n`,
     30000,
   );

@@ -57,6 +57,19 @@ export function isStockMain(text: string | null, sdk?: string | null): boolean {
   return exact !== null ? text === exact : STOCK_MAINS.includes(text);
 }
 
+/**
+ * Python run before a demo starts (at boot, or from RAM): the FPGA board's SDK starts in
+ * ASIC_MANUAL_INPUTS whatever config.ini says, and in that mode the RP2350 doesn't drive
+ * ui_in, so no entry's inputs would reach its design (seen on fpga-4: ui_in read 0). The
+ * SDK's own ASIC_RP_CONTROL leaves undriven any input whose DIP switch is on.
+ */
+export const FPGA_DRIVE_INPUTS = `if tt.shuttle.run == 'FPGA':
+    from ttboard.mode import RPMode
+    tt.mode = RPMode.ASIC_RP_CONTROL
+`;
+
+const indent = (code: string, by: string) => code.replace(/^(?=.)/gm, by);
+
 export const WRAPPER_MAIN = `${HELPER_MARKER}
 # Runs the stock main.py, saved as /main_stock.py, then starts demo mode when
 # config.ini's [DEFAULT] section says "demo = yes". The demo sequence is /demo.json,
@@ -65,7 +78,9 @@ export const WRAPPER_MAIN = `${HELPER_MARKER}
 exec(open('/main_stock.py').read())
 try:
     import demo as _demo
-    tt.demo = _demo.autostart(tt, False)
+    if _demo.demo_setting():
+        # the FPGA board's SDK doesn't drive ui_in until told to
+${indent(FPGA_DRIVE_INPUTS, '        ')}    tt.demo = _demo.autostart(tt, False)
     if tt.demo.running:
         print('Demo mode running: tt.demo.stop() to stop it')
     elif tt.demo.errors:
