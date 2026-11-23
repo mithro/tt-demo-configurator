@@ -138,14 +138,17 @@ function makeState() {
     return info;
   }
 
-  async function connect() {
+  /** Connect to a board; `anyPort` lists every serial port, for when the 2e8a filter hides it. */
+  async function connect(anyPort = false) {
     if (!('serial' in navigator)) {
       say('this browser has no WebSerial: use Chrome or Edge on a desktop', 'error');
       return;
     }
     let port: SerialPort;
     try {
-      port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x2e8a }] });
+      // Linux Chrome takes a port's USB IDs from udev; when they're missing the vendor filter
+      // hides the board, so the help offers the unfiltered list.
+      port = await navigator.serial.requestPort(anyPort ? { filters: [] } : { filters: [{ usbVendorId: 0x2e8a }] });
     } catch (e) {
       if ((e as Error).name === 'SecurityError') {
         say('the browser blocked serial access on this page (a site setting or policy): allow “Serial ports” for this site', 'error');

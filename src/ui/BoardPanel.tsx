@@ -44,6 +44,14 @@ function ConnectHelp() {
             <>On Linux, check a port exists: <code>ls -l /dev/ttyACM*</code>. If not, run <code>sudo dmesg | tail</code> after plugging in (the cdc_acm driver should attach).</>,
             <>Chrome or Chromium installed as a Snap or Flatpak can’t see serial ports. Snap: <code>sudo snap connect chromium:raw-usb</code>; Flatpak: <code>flatpak override --user --device=all com.google.Chrome</code>; then restart the browser. Chrome from google.com (.deb/.rpm) works as is.</>,
             <>Close anything else using the board (the commander app in another tab, Thonny, mpremote, screen), then try again.</>,
+            <>
+              If the port works from a terminal (<code>mpremote</code> gets a prompt) but Chrome lists nothing, Chrome may
+              not know the port&apos;s USB IDs, which hides it from the board filter:{' '}
+              <Button size="small" variant="outlined" onClick={() => void s.connect(true)}>
+                Show every serial port
+              </Button>{' '}
+              and pick <code>ttyACM0</code> (or the board&apos;s name).
+            </>,
           ],
         };
       case 'open-failed':
