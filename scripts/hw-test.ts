@@ -21,8 +21,9 @@
 // for test rigs whose wiring would fight a design's outputs, like the fpgas.online Pmod HAT.
 //
 // Without --permanent nothing on the board's flash changes except a scratch file that is
-// removed again. With --permanent it backs up main.py and config.ini (and a SHA-256 of
-// every file on the board), installs the helper, makes the sequence permanent, reboots,
+// removed again, and it ends with a soft reboot. With --permanent it backs up main.py and
+// config.ini (and a SHA-256 of every file on the board), installs the helper, makes the
+// sequence permanent, reboots,
 // checks the demo runs, resets to stock, and checks main.py and config.ini are
 // byte-identical to the backup and every file's SHA-256 is as before. If anything fails
 // after the first write it still resets the board to stock before giving up.
@@ -171,6 +172,13 @@ async function main() {
       const left = manifestDiff(before, await manifest(repl));
       check('the board is back to stock after the failure', left.length === 0, left.join('; '));
     }
+  } else {
+    // leave the board as its own main.py starts it, not with the test's design and mode
+    await softReboot(repl);
+    await sleep(12000);
+    await repl.enter();
+    const after = await detect(repl);
+    check('rebooted: no demo running', !after.demoRunning, `mode ${after.mode}`);
   }
   await repl.exit();
   await repl.close();
