@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +22,8 @@ import { sha256Hex } from './sha256';
 const B = path.resolve(__dirname, '../../test/fixtures/boards');
 const stockIni = readFileSync(path.join(B, 'stock-config.ini'), 'utf8');
 const stock31 = stockMainFor('3.1.1')!;
+/** The port check runs scripts/port-demo-sdk2.py, which needs uv. */
+const haveUv = !spawnSync('uv', ['--version']).error;
 
 function board(over: Partial<BoardInfo>): BoardInfo {
   return {
@@ -132,7 +134,7 @@ describe('RP2040 boards (SDK 2.x)', () => {
     expect(reset[0]).toMatchObject({ path: '/main.py', text: stock204 });
     expect(reset.find((o) => o.path === '/config.ini')).toMatchObject({ text: ini204 });
   });
-  it('has the SDK 2.x helper exactly as scripts/port-demo-sdk2.py makes it from the pinned demo.py', () => {
+  it.skipIf(!haveUv)('has the SDK 2.x helper exactly as scripts/port-demo-sdk2.py makes it from the pinned demo.py', () => {
     const REPO = path.resolve(__dirname, '../..');
     const out = execFileSync('uv', ['run', '--no-project', 'python', '-I', 'scripts/port-demo-sdk2.py', 'src/data/demo.py', '-'], {
       cwd: REPO,
