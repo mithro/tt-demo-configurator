@@ -23,7 +23,12 @@ export function helperDemoPy(info: Pick<BoardInfo, 'mcu'>): string {
 
 /** Is the board's /demo.py exactly the helper the app would install on it? */
 export function helperDemoPyCurrent(info: Pick<BoardInfo, 'mcu' | 'demoPySha256'>): boolean {
-  return info.demoPySha256 === HELPER_SHA256[info.mcu ?? 'RP2350'];
+  return info.demoPySha256 === helperDemoPySha256(info);
+}
+
+/** SHA-256 (hex) of helperDemoPy(info). */
+export function helperDemoPySha256(info: Pick<BoardInfo, 'mcu'>): string {
+  return HELPER_SHA256[info.mcu ?? 'RP2350'];
 }
 
 const stockFiles = import.meta.glob('../data/stock-main/*.py', { query: '?raw', import: 'default', eager: true }) as Record<

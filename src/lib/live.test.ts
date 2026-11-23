@@ -8,7 +8,9 @@ import { PythonBoard, startPythonBoard } from '~/testing/pythonBoard';
 import { stubTtboard } from '~/testing/stubTtboard';
 import { HELPER_DEMO_PY } from './helper';
 import { boardValidate, LiveBoard, playOne, runFromRam, sourcePieces, stopDemo } from './live';
+import { removeFile, writeFile } from './board';
 import { RawRepl } from './rawRepl';
+import { sha256Hex } from './sha256';
 
 const FIX = path.resolve(__dirname, '../../test/fixtures');
 const index = JSON.parse(readFileSync(path.join(FIX, 'index.json'), 'utf8'));
@@ -75,6 +77,21 @@ describe('loading the helper into RAM', () => {
     await r3.check('del exec\n');
     const text = readFileSync(path.join(FIX, 'bad', 'lookup.json'), 'utf8');
     expect(await boardValidate(r3, stock, text)).toEqual(JSON.parse(readFileSync(path.join(FIX, 'bad', 'lookup.errors.json'), 'utf8')));
+  });
+  it('uses the current /demo.py on a helper board, not an older one the boot wrapper imported', async () => {
+    // booted with an old helper...
+    await writeFile(r3, '/demo.py', "def validate(conf, run, shuttle=None):\n    return ([], ['the OLD helper'])\n");
+    await r3.check("for _n in ('_tdc_demo', '_tdc_demo_sha256'):\n globals().pop(_n, None)\nimport demo\n");
+    // ...then "Make permanent" wrote the current one, and the board was not rebooted
+    await writeFile(r3, '/demo.py', HELPER_DEMO_PY.RP2350);
+    const helper: LiveBoard = { firmware: 'helper', mcu: 'RP2350', demoPySha256: sha256Hex(HELPER_DEMO_PY.RP2350) };
+    const text = readFileSync(path.join(FIX, 'bad', 'lookup.json'), 'utf8');
+    const expected = JSON.parse(readFileSync(path.join(FIX, 'bad', 'lookup.errors.json'), 'utf8'));
+    expect(await boardValidate(r3, helper, text)).toEqual(expected);
+    // and RAM code from an earlier, different helper is not reused either
+    await r3.check("_tdc_demo_sha256 = 'something else'\n_tdc_demo['validate'] = lambda *a: ([], ['stale'])\n");
+    expect(await boardValidate(r3, helper, text)).toEqual(expected);
+    await removeFile(r3, '/demo.py');
   });
 });
 

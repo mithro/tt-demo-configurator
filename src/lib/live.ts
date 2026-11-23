@@ -12,7 +12,7 @@ import type { BoardInfo } from './board';
 import { removeFile, writeFile } from './board';
 import type { DemoFile, Entry } from './demoFile';
 import type { FileOp } from './helper';
-import { helperDemoPy, helperDemoPyCurrent } from './helper';
+import { helperDemoPy, helperDemoPyCurrent, helperDemoPySha256 } from './helper';
 import { RawRepl, ReplError } from './rawRepl';
 
 const SRC_CHUNK = 2048;
@@ -45,11 +45,19 @@ export async function loadDemoModule(repl: RawRepl, info: LiveBoard): Promise<vo
     await repl.check('import ttboard.demo\n_tdc_demo = ttboard.demo.__dict__\n');
     return;
   }
-  const have = await repl.check("print('_tdc_demo' in globals())\n");
-  if (have.trim() === 'True') return;
+  // _tdc_demo_sha256 says which code _tdc_demo holds: reuse it only if it is this helper
+  const want = helperDemoPySha256(info);
+  const have = await repl.check("print(globals().get('_tdc_demo_sha256') if '_tdc_demo' in globals() else None)\n");
+  if (have.trim() === want) return;
+  await repl.check("for _n in ('_tdc_demo', '_tdc_demo_sha256'):\n globals().pop(_n, None)\n");
   if (info.firmware === 'helper' && helperDemoPyCurrent(info)) {
-    // the installed helper is this same code: import it from flash rather than send it
-    await repl.check('import demo\n_tdc_demo = demo.__dict__\n', 30000);
+    // the installed helper is this same code: import it from flash rather than send it.
+    // Not the module already in sys.modules: the boot wrapper imported /demo.py as it was
+    // then, which may be an older helper that has been replaced since.
+    await repl.check(
+      `import sys\nsys.modules.pop('demo', None)\nimport demo\n_tdc_demo = demo.__dict__\n_tdc_demo_sha256 = ${JSON.stringify(want)}\n`,
+      30000,
+    );
     return;
   }
   // built in _tdc_part and only then named _tdc_demo, so a piece that fails (a MemoryError
@@ -63,7 +71,7 @@ export async function loadDemoModule(repl: RawRepl, info: LiveBoard): Promise<vo
       }
       await repl.check("exec(''.join(_tdc_src), _tdc_part)\ndel _tdc_src\nimport gc\ngc.collect()\n", 30000);
     }
-    await repl.check('_tdc_demo = _tdc_part\ndel _tdc_part\n');
+    await repl.check(`_tdc_demo = _tdc_part\ndel _tdc_part\n_tdc_demo_sha256 = ${JSON.stringify(want)}\n`);
   } catch (e) {
     await repl.check("for _n in ('_tdc_part', '_tdc_src'):\n globals().pop(_n, None)\nimport gc\ngc.collect()\n").catch(() => undefined);
     throw e;
