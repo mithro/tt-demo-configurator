@@ -70,6 +70,18 @@ describe('SimClient', () => {
     expect(workers[0].terminated).toBe(false);
   });
 
+  it('is free again once a load unloaded mid-compile settles (review #4)', () => {
+    const { client, workers } = setup();
+    const s1 = load(client, 'a');
+    workers[0].reply({ type: 'ready', token: 0 });
+    s1.close();
+    expect(workers[0].sent.map((m) => m.type)).toEqual(['load', 'unload']);
+    // the worker finishes the compile and reports the load superseded
+    workers[0].reply({ type: 'status', token: s1.token, state: 'superseded' });
+    expect(client.isBusy).toBe(false);
+    load(client, 'b');
+    expect(workers[0].terminated).toBe(false);
+  });
 
   it('tells an older session it was superseded, and routes messages by token', () => {
     const { client, workers } = setup();

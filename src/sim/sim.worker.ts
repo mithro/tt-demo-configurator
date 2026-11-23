@@ -165,7 +165,11 @@ async function load(token: number, design: SimDesign, entry: SimEntry, run: bool
   const b = await p;
   // a network failure may be temporary: let the next attempt fetch again
   if ('error' in b && (b.stage === 'fetch' || b.stage === 'engine') && built.get(key) === p) built.delete(key);
-  if (cur !== c) return;
+  if (cur !== c) {
+    // unloaded or replaced while fetching or compiling: say so, so the app knows we're free
+    post({ type: 'status', token, state: 'superseded' });
+    return;
+  }
   if ('error' in b) {
     post({ type: 'status', token, state: 'failed', reason: b.error });
     return;

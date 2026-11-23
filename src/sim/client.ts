@@ -20,7 +20,7 @@ export interface SimSession {
 export { designKey };
 
 /** Statuses after which the worker has finished with a load (and isn't compiling for it). */
-const SETTLED = new Set(['paused', 'running', 'failed']);
+const SETTLED = new Set(['paused', 'running', 'failed', 'superseded']);
 
 export class SimClient {
   private worker: WorkerLike | null = null;
@@ -82,7 +82,8 @@ export class SimClient {
       run: (run) => this.send({ type: 'run', token, run }),
       close: () => {
         this.listeners.delete(token);
-        // only unload if nothing newer has been loaded since
+        // only unload if nothing newer has been loaded since; the worker still settles the
+        // load (with "superseded" if it was compiling), which clears busy
         if (token === this.nextToken - 1) this.send({ type: 'unload' });
       },
     };
