@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The live functions run against the CPython fake board, which executes the real pinned
 // demo.py: so this is also a third check that the board's validate() and the app's agree.
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -101,12 +102,42 @@ describe('sourcePieces', () => {
       const pieces = sourcePieces(src);
       expect(pieces.join('')).toBe(src);
       expect(pieces.length).toBeGreaterThan(10);
-      for (const p of pieces.slice(1)) expect(p).toMatch(/^(def|class) /);
+      for (const p of pieces.slice(1)) expect(p).toMatch(/^(def|class|@)/);
       // the biggest piece is what the board must hold and compile at once
       expect(Math.max(...pieces.map((p) => p.length))).toBeLessThan(8000);
+      expect(compileEach(pieces)).toEqual(pieces.map(() => 'ok'));
     }
   });
+  it('keeps decorators with their def and never cuts a string', () => {
+    const src = [
+      "'''A module.",
+      'def this_is_text_not_code():',
+      "'''",
+      'import json',
+      '@staticmethod',
+      '@other',
+      'def f():',
+      '    """',
+      'class NotAClass:',
+      '    """',
+      '    return 1',
+      'class C:',
+      '    pass',
+    ].join('\n');
+    const pieces = sourcePieces(src);
+    expect(pieces.join('')).toBe(src);
+    expect(pieces.map((p) => p.split('\n')[0])).toEqual(["'''A module.", '@staticmethod', 'class C:']);
+    expect(compileEach(pieces)).toEqual(['ok', 'ok', 'ok']);
+  });
 });
+
+/** CPython's compile() of each piece on its own: "ok" or the SyntaxError. */
+function compileEach(pieces: string[]): string[] {
+  const code =
+    'import json, sys\nout = []\nfor p in json.load(sys.stdin):\n    try:\n        compile(p, "piece", "exec")\n        out.append("ok")\n' +
+    '    except SyntaxError as e:\n        out.append(repr(e))\nprint(json.dumps(out))\n';
+  return JSON.parse(execFileSync('uv', ['run', '--no-project', 'python', '-I', '-c', code], { input: JSON.stringify(pieces), encoding: 'utf8' }));
+}
 
 describe('an RP2040 board on SDK 2.x (stub)', () => {
   const rp2040: LiveBoard = { firmware: 'stock', mcu: 'RP2040', demoPySha256: null };

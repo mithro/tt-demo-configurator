@@ -28,12 +28,24 @@ export type LiveBoard = Pick<BoardInfo, 'firmware' | 'mcu' | 'demoPySha256'>;
 export function sourcePieces(src: string): string[] {
   const pieces: string[] = [];
   let cur: string[] = [];
+  let inString: string | null = null; // the triple quote of a string still open
+  let decorated = false; // the def or class being reached has its decorators in cur
   for (const line of src.split('\n')) {
-    if (/^(def|class) /.test(line) && cur.length) {
-      pieces.push(cur.join('\n') + '\n');
-      cur = [];
+    if (inString === null) {
+      const isDef = /^(def|class) /.test(line);
+      const isDecorator = line.startsWith('@');
+      if ((isDef || isDecorator) && !decorated && cur.length) {
+        pieces.push(cur.join('\n') + '\n');
+        cur = [];
+      }
+      if (isDecorator) decorated = true;
+      else if (isDef) decorated = false;
     }
     cur.push(line);
+    for (const m of line.matchAll(/'''|"""/g)) {
+      if (inString === null) inString = m[0];
+      else if (inString === m[0]) inString = null;
+    }
   }
   if (cur.length) pieces.push(cur.join('\n'));
   return pieces;
