@@ -49,10 +49,15 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** The SDK's major version, or null if it isn't a release number. */
+/**
+ * The SDK's major version, or null if it isn't a release number. A build from source
+ * reports "0.0.0" (the SDK's default when there is no release marker), which isn't one.
+ * The one rule for both what the app supports and what it offers to upgrade.
+ */
 export function sdkMajor(sdk: string | null): number | null {
   const m = sdk?.match(/^v?(\d+)\./);
-  return m ? parseInt(m[1], 10) : null;
+  const major = m ? parseInt(m[1], 10) : 0;
+  return major > 0 ? major : null;
 }
 
 /** A newer stock release for this board's microcontroller, if there is one. */

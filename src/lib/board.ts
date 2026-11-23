@@ -193,7 +193,7 @@ export function unsupportedReason(b: BoardInfo): string | null {
   }
   const fw = STOCK_FIRMWARE[b.mcu];
   const major = sdkMajor(b.sdk);
-  if (major && (major !== fw.sdkMajor || compareVersions(b.sdk!, fw.oldest) < 0)) {
+  if (major !== null && (major !== fw.sdkMajor || compareVersions(b.sdk!, fw.oldest) < 0)) {
     return (
       `This ${BOARD_NAME[b.mcu]} runs firmware SDK ${b.sdk}; the configurator needs SDK ${fw.oldest} or later ` +
       `(SDK ${fw.sdkMajor}.x on this board). Flash ${fw.uf2} from ${fw.url} (it replaces every file on the board: ` +
