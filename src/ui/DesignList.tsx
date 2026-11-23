@@ -21,6 +21,7 @@ import {
 } from '@suid/material';
 import { createEffect, createMemo, createSignal, For, on, Show } from 'solid-js';
 import { FPGA_SHUTTLE } from '~/lib/fpga';
+import { formatHz } from '~/lib/frequency';
 import { showOne } from '~/lib/live';
 import { boardUsable } from './actions';
 import { PMOD_LIST, searchUrl, SiliconStatus } from '~/lib/projectSearch';
@@ -209,7 +210,7 @@ export function DesignList() {
                 </Typography>
                 <Typography variant="caption" noWrap component="div">
                   <SiliconMark project={p} />
-                  {[projectKey(p), p.author, p.known && `as on ${p.known.shuttle}`, p.clock_hz ? `${(p.clock_hz / 1e6).toFixed(3)} MHz` : 'clock not set']
+                  {[projectKey(p), p.author, p.known && `as on ${p.known.shuttle}`, p.clock_hz ? formatHz(p.clock_hz) : 'clock not set']
                     .filter(Boolean)
                     .join(' · ')}
                   {p.danger_level && p.danger_level !== 'safe' ? ` · not safe (${p.danger_level})` : ''}
