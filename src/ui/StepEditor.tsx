@@ -4,7 +4,7 @@
 import { Box, Button, IconButton, MenuItem, Select, Stack, Typography } from '@suid/material';
 import { createMemo, For, Show } from 'solid-js';
 import type { Step } from '~/lib/demoFile';
-import { Bits } from './SequenceEditor';
+import { Bits, ByteField } from './SequenceEditor';
 import { uiName } from '~/lib/shuttleIndex';
 import { state as s } from './state';
 
@@ -30,7 +30,7 @@ export function StepEditor(props: { index: number }) {
     setSteps([...steps(), { set: idle ^ (1 << bit) }, { wait_ms: hold }, { set: idle }, { wait_ms: gap }]);
   };
 
-  const ROW = { display: 'grid', 'grid-template-columns': '1.8em 4em minmax(0, 1fr) 56px', gap: '6px', 'align-items': 'center' } as const;
+  const ROW = { display: 'grid', 'grid-template-columns': '1.8em 2.6em 4.5em minmax(0, 1fr) 56px', gap: '6px', 'align-items': 'center' } as const;
 
   return (
     <Box sx={{ mt: 2 }}>
@@ -45,6 +45,7 @@ export function StepEditor(props: { index: number }) {
         <div style={{ ...ROW, 'margin-top': '6px' }}>
           <span />
           <span />
+          <span style={{ 'font-size': '10px', opacity: 0.6 }}>value</span>
           <div style={{ display: 'grid', 'grid-template-columns': 'repeat(8, minmax(0, 1fr))', gap: '3px' }}>
             <For each={[0, 1, 2, 3, 4, 5, 6, 7]}>
               {(n) => (
@@ -67,7 +68,7 @@ export function StepEditor(props: { index: number }) {
                 <Show
                   when={'set' in st}
                   fallback={
-                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', gridColumn: 'span 2' }}>
                       <input
                         type="number"
                         min={1}
@@ -79,6 +80,7 @@ export function StepEditor(props: { index: number }) {
                     </Stack>
                   }
                 >
+                  <ByteField value={(st as { set: number }).set} onChange={(v) => replace(i(), { set: v })} />
                   <Bits dense value={(st as { set: number }).set} entry={e()} onChange={(v) => replace(i(), { set: v })} />
                 </Show>
                 <span style={{ 'white-space': 'nowrap' }}>

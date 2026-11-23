@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // The sequence: shuttle, open/save, the entry list, and the selected entry's settings.
 import { Alert, Box, Button, Card, CardContent, IconButton, MenuItem, Select, Stack, TextField, Typography } from '@suid/material';
-import { createMemo, For, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
+import { parseByte } from '~/lib/byteValue';
 import type { Entry } from '~/lib/demoFile';
 import { projectKey, uiName } from '~/lib/shuttleIndex';
 import * as act from './actions';
@@ -61,6 +62,49 @@ export function Bits(props: { value: number; onChange: (v: number) => void; entr
         }}
       </For>
     </div>
+  );
+}
+
+/**
+ * The same 8 inputs typed as one number: decimal, 0x hex or 0b binary. It follows the toggles
+ * while not being typed in; a value that isn't 0–255 is shown red and not applied.
+ */
+export function ByteField(props: { value: number; onChange: (v: number) => void; width?: string }) {
+  const [text, setText] = createSignal(String(props.value));
+  const [editing, setEditing] = createSignal(false);
+  createEffect(() => {
+    const v = props.value;
+    if (!editing()) setText(String(v));
+  });
+  const bad = () => parseByte(text()) === null;
+  return (
+    <input
+      type="text"
+      inputmode="numeric"
+      aria-label="ui_in as a number"
+      title="ui_in as a number: decimal, 0x hex or 0b binary (0–255)"
+      value={text()}
+      onFocus={() => setEditing(true)}
+      onBlur={() => {
+        setEditing(false);
+        setText(String(props.value));
+      }}
+      onInput={(ev) => {
+        setText(ev.currentTarget.value);
+        const n = parseByte(ev.currentTarget.value);
+        if (n !== null && n !== props.value) props.onChange(n);
+      }}
+      onKeyDown={(ev) => ev.key === 'Enter' && ev.currentTarget.blur()}
+      style={{
+        width: props.width ?? '4.5em',
+        padding: '2px 5px',
+        border: `1px solid ${bad() ? '#d32f2f' : '#ccc'}`,
+        'border-radius': '4px',
+        font: 'inherit',
+        'font-family': 'monospace',
+        'box-sizing': 'border-box',
+      }}
+    />
   );
 }
 
@@ -130,11 +174,12 @@ function EntryEditor(props: { index: number }) {
 
         <Stack direction="row" sx={{ alignItems: 'baseline', mt: 1.5, mb: 0.5 }}>
           <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-            Inputs at start <span style={{ 'font-weight': 400, opacity: 0.7 }}>· click to flip</span>
+            Inputs at start <span style={{ 'font-weight': 400, opacity: 0.7 }}>· click to flip, or type a number</span>
           </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-            ui_in = {e().ui_in} (0b{e().ui_in.toString(2).padStart(8, '0')})
+          <Typography variant="caption" sx={{ fontFamily: 'monospace', mr: 1 }}>
+            ui_in = 0b{e().ui_in.toString(2).padStart(8, '0')}
           </Typography>
+          <ByteField value={e().ui_in} onChange={(v) => set({ ui_in: v })} />
         </Stack>
         <Bits value={e().ui_in} entry={e()} onChange={(v) => set({ ui_in: v })} />
 
