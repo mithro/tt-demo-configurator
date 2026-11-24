@@ -6,6 +6,7 @@ import { unsupportedReason } from '~/lib/board';
 import { STOCK_FIRMWARE } from '~/lib/firmware';
 import { DemoFile, ENTRY_FIELDS, Entry, formatDemo, Step } from '~/lib/demoFile';
 import { addressNote } from '~/lib/fpga';
+import { inButtonOrder, isButton, type GamepadController } from '~/lib/gamepad';
 import { importHandmade } from '~/lib/handmade';
 import {
   FileOp,
@@ -308,6 +309,15 @@ export async function restoreBackup() {
   }
 }
 
+/** A "gamepad" step's controllers as far as they make sense: at most 2, known buttons, in order. */
+function looseGamepad(v: unknown): GamepadController[] {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 2).map((c) => {
+    const buttons = c && typeof c === 'object' && Array.isArray((c as { buttons?: unknown }).buttons) ? (c as { buttons: unknown[] }).buttons : [];
+    return { buttons: inButtonOrder(buttons.filter(isButton)) };
+  });
+}
+
 /**
  * Open a file in the editor even if it has problems, keeping what can be kept, so the
  * user can fix it. Returns the problems found reading it.
@@ -335,8 +345,8 @@ export function openText(text: string, where: string): boolean {
     ui_in: num(p?.ui_in, 0),
     steps: Array.isArray(p?.steps)
       ? (p.steps as Record<string, unknown>[])
-          .filter((x) => x && ('set' in x || 'wait_ms' in x))
-          .map((x): Step => ('set' in x ? { set: num(x.set, 0) } : { wait_ms: num(x.wait_ms, 0) }))
+          .filter((x) => x && ('set' in x || 'wait_ms' in x || 'gamepad' in x))
+          .map((x): Step => ('set' in x ? { set: num(x.set, 0) } : 'gamepad' in x ? { gamepad: looseGamepad(x.gamepad) } : { wait_ms: num(x.wait_ms, 0) }))
       : [],
   }));
   const dropped = raw.some(

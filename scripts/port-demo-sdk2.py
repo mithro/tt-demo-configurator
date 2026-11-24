@@ -19,10 +19,10 @@ def sub(old, new, count=1):
     out = out.replace(old, new)
 
 sub("""# Pinned copy of ttboard/demo.py from mithro/tt-micropython-firmware
-# branch demo-shuttle-sequences, commit 1c93680 (LGPL-2.1, like the firmware).
+# branch demo-gamepad, commit c32d62a (LGPL-2.1, like the firmware).
 # Installed on stock firmware as the top-level module /demo.py.
 """, """# ttboard/demo.py from mithro/tt-micropython-firmware branch
-# demo-shuttle-sequences, commit 1c93680 (LGPL-2.1, like the firmware),
+# demo-gamepad, commit c32d62a (LGPL-2.1, like the firmware),
 # ported to SDK 2.x (the RP2040 demoboards: TT04/05 and TT06+, SDK v2.0.x).
 # Installed on stock 2.x firmware as the top-level module /demo.py.
 #

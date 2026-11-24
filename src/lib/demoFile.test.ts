@@ -42,4 +42,12 @@ describe('helpers', () => {
     expect(JSON.parse(again)).toEqual(file);
     expect(again.split('\n')[4]).toContain('"address": 260');
   });
+  it('formats gamepad steps', () => {
+    const text = readFileSync(path.join(FIX, 'good', 'gamepad.json'), 'utf8');
+    const { file } = parseDemoText(text, SHUTTLE, lookup);
+    const again = formatDemo(file!);
+    expect(JSON.parse(again)).toEqual(file);
+    expect(again).toContain('{"gamepad": [{"buttons": ["start"]}]}, {"wait_ms": 100}');
+    expect(again).toContain('{"gamepad": []}');
+  });
 });

@@ -8,8 +8,13 @@
 //
 // Known difference: JSON.parse turns 1.0 into the integer 1, while Python keeps a float
 // and rejects it. The board check catches that case.
+import { GAMEPAD_BUTTONS, GAMEPAD_PINS, type GamepadController, isButton } from './gamepad';
 
-export type Step = { set: number } | { wait_ms: number };
+/**
+ * {"set": N} writes ui_in; {"wait_ms": N} waits; {"gamepad": [...]} lists the controllers
+ * plugged into the emulated Gamepad Pmod (0 to 2, player 1 first) and the buttons each holds.
+ */
+export type Step = { set: number } | { wait_ms: number } | { gamepad: GamepadController[] };
 
 export interface Entry {
   address: number;
@@ -80,11 +85,45 @@ export function entryKey(e: Pick<Entry, 'address' | 'subtile'>): number | string
   return e.subtile ? `${e.address}-${e.subtile}` : e.address;
 }
 
+/** Does the entry play the gamepad? Then ui_in bits 4..6 are the gamepad's. */
+export function usesGamepad(steps: unknown): boolean {
+  return Array.isArray(steps) && steps.some((s) => isObj(s) && Object.keys(s).length === 1 && 'gamepad' in s);
+}
+
+function checkGamepad(here: string, v: unknown, errors: string[]) {
+  if (!Array.isArray(v) || v.length > 2) {
+    errors.push(`${here}: "gamepad" must be a list of 0 to 2 controllers, got ${pyStr(v)}`);
+    return;
+  }
+  v.forEach((c, j) => {
+    const what = `${here}: gamepad controller ${j + 1}`;
+    if (!isObj(c) || Object.keys(c).length !== 1 || !('buttons' in c)) {
+      errors.push(`${what} must be an object with exactly one key, "buttons": ${pyStr(c)}`);
+      return;
+    }
+    const buttons = c.buttons;
+    if (!Array.isArray(buttons)) {
+      errors.push(`${what}: "buttons" must be a list, got ${pyStr(buttons)}`);
+      return;
+    }
+    const unknown = buttons.filter((b) => !isButton(b));
+    for (const b of unknown) errors.push(`${what}: unknown button ${pyStr(b)}`);
+    if (unknown.length) return;
+    const order = buttons.map((b) => GAMEPAD_BUTTONS.indexOf(b));
+    if (order.some((k, i) => i > 0 && k <= order[i - 1])) {
+      errors.push(`${what}: "buttons" must name each button once, in the order ${GAMEPAD_BUTTONS.join(', ')}, got ${pyStr(buttons)}`);
+    } else if (buttons.length === GAMEPAD_BUTTONS.length) {
+      errors.push(`${what}: all 12 buttons at once reads as no controller`);
+    }
+  });
+}
+
 function checkSteps(where: string, steps: unknown, errors: string[]) {
   if (!Array.isArray(steps)) {
     errors.push(`${where}: "steps" must be a list`);
     return;
   }
+  const pad = usesGamepad(steps);
   let totalWait = 0;
   steps.forEach((step, i) => {
     const here = `${where} step ${i}`;
@@ -95,6 +134,9 @@ function checkSteps(where: string, steps: unknown, errors: string[]) {
     if ('set' in step) {
       const v = step.set;
       if (!(isInt(v) && v >= 0 && v <= 0xff)) errors.push(`${here}: "set" must be an integer 0..255, got ${pyStr(v)}`);
+      else if (pad && v & GAMEPAD_PINS) errors.push(`${here}: "set" must keep bits 4..6 (the gamepad) clear, got ${v}`);
+    } else if ('gamepad' in step) {
+      checkGamepad(here, step.gamepad, errors);
     } else if ('wait_ms' in step) {
       const v = step.wait_ms;
       if (!(isInt(v) && v >= 0)) errors.push(`${here}: "wait_ms" must be an integer >= 0, got ${pyStr(v)}`);
@@ -140,6 +182,10 @@ function checkEntry(where: string, e: unknown, errors: string[]): boolean {
   }
   const n = errors.length;
   checkSteps(where, e.steps, errors);
+  if (usesGamepad(e.steps)) {
+    if (isInt(e.ui_in) && e.ui_in & GAMEPAD_PINS) errors.push(`${where}: "ui_in" must keep bits 4..6 (the gamepad) clear, got ${e.ui_in}`);
+    if (isInt(e.clock_hz) && e.clock_hz === 0) errors.push(`${where}: "clock_hz" must be > 0 with "gamepad" steps: the design reads the gamepad on its clock`);
+  }
   return ok && errors.length === n;
 }
 
@@ -198,7 +244,10 @@ export function fileShuttle(text: string): string | null {
 }
 
 function formatStep(s: Step): string {
-  return 'set' in s ? `{"set": ${s.set}}` : `{"wait_ms": ${s.wait_ms}}`;
+  if ('set' in s) return `{"set": ${s.set}}`;
+  if ('wait_ms' in s) return `{"wait_ms": ${s.wait_ms}}`;
+  const pads = s.gamepad.map((c) => `{"buttons": [${c.buttons.map((b) => JSON.stringify(b)).join(', ')}]}`);
+  return `{"gamepad": [${pads.join(', ')}]}`;
 }
 
 /** Serialise with a fixed key order and one project per line, so diffs stay readable. */

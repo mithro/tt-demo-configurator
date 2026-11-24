@@ -3,7 +3,7 @@
 // A raw-REPL Transport over an fpgas.online serial bridge (WebSocket), for the scripts that
 // run the app's board code against a real board instead of WebSerial in a browser.
 import WebSocket from 'ws';
-import { Transport } from '../src/lib/rawRepl';
+import type { Transport } from '../src/lib/rawRepl';
 
 export class WsTransport implements Transport {
   private queue: Uint8Array[] = [];
