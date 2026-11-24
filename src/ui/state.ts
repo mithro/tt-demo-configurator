@@ -228,7 +228,8 @@ function makeState() {
     say('the board disconnected', 'error');
   }
 
-  async function disconnect() {
+  /** Let go of the board. `leaveRunning`: send it nothing, as its own main.py is running. */
+  async function disconnect(leaveRunning = false) {
     const r = repl();
     setRepl(null);
     setBoard(null);
@@ -237,7 +238,7 @@ function makeState() {
     if (r) {
       // a test from RAM is still running: reboot the board back to normal before letting go
       if (testing) await softReboot(r).catch(() => undefined);
-      else await r.exit().catch(() => undefined);
+      else if (!leaveRunning) await r.exit().catch(() => undefined);
       await r.close();
     }
   }

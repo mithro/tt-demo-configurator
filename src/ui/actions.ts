@@ -157,7 +157,7 @@ export async function stop() {
   // reboot, so the board comes up as it does on power-up. A demo the firmware started is
   // the board's normal state, so that one is only stopped.
   if (s.ramRunning()) {
-    if (await reboot()) s.say('test stopped: the board was rebooted into its normal state', 'ok');
+    if ((await reboot()) === 'ready') s.say('test stopped: the board was rebooted into its normal state', 'ok');
     return;
   }
   await s.job('stopping the demo', (r) => stopDemo(r));
@@ -193,29 +193,60 @@ export async function resetToStock() {
   if (ops) await apply('Reset to stock', ops, stockWarnings(b, ops));
 }
 
-/** Soft-reboot the board (main.py runs, as on power-up) and reconnect. False if that failed. */
-export async function reboot(): Promise<boolean> {
+/**
+ * Soft-reboot the board (main.py runs, as on power-up). 'ready': main.py returned and the app
+ * is back in the REPL. 'released': main.py is still running (a hand-made board's loop never
+ * returns), which is the board's normal state, so the app let go of the port rather than stop
+ * it. 'failed': the reboot didn't happen as far as the app can tell.
+ */
+export async function reboot(): Promise<'ready' | 'released' | 'failed'> {
   const r = s.repl();
-  if (!r) return false;
+  const b = s.board();
+  if (!r) return 'failed';
+  const handmade = b?.firmware === 'handmade';
+  const waitMs = handmade ? HANDMADE_WAIT_MS : REBOOT_TIMEOUT_MS;
   s.setBusy('rebooting');
-  let ok = true;
+  let returned: boolean;
   try {
-    s.setRamRunning(false);
     // wait for main.py to finish (the FPGA board also loads a bitstream) before Ctrl-C reaches it
-    if (!(await rebootAndWait(r, REBOOT_TIMEOUT_MS))) s.say(`the board was still booting after ${REBOOT_TIMEOUT_MS / 1000} s`, 'error');
-    if (s.repl() !== r) return false; // disconnected while it booted
+    returned = await rebootAndWait(r, waitMs);
+  } catch (e) {
+    // the test from RAM may well still be running: ramRunning stays as it was
+    s.setBusy(null);
+    s.say(`reboot: ${e}`, 'error');
+    return 'failed';
+  }
+  s.setRamRunning(false); // the soft reset has happened
+  if (s.repl() !== r) {
+    s.setBusy(null);
+    return 'failed'; // disconnected while it booted
+  }
+  if (!returned) {
+    s.setBusy(null);
+    await s.disconnect(true);
+    s.say(
+      `rebooted: the board is running its own main.py, which ${handmade ? 'loops and never returns' : `hadn't finished after ${waitMs / 1000} s`}. ` +
+        'The app let go of it so as not to stop it; connect again to change it (connecting stops it).',
+      'ok',
+    );
+    return 'released';
+  }
+  let result: 'ready' | 'failed' = 'ready';
+  try {
     await r.enter();
   } catch (e) {
-    ok = false;
+    result = 'failed';
     s.say(`reboot: ${e}`, 'error');
   } finally {
     s.setBusy(null);
   }
   await s.refreshBoard();
-  return ok;
+  return result;
 }
 
 const REBOOT_TIMEOUT_MS = 30000;
+/** A hand-made board's main.py loops (vga_cycle.run), so there is no prompt to wait for. */
+const HANDMADE_WAIT_MS = 3000;
 
 export async function bootloader() {
   if (!supported()) return;
