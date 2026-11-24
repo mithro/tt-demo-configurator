@@ -76,17 +76,19 @@ describe('the gamepad_pmod Verilog decodes the simulated Pmod', () => {
   }
 
   // The board resends the held report after each end-of-pass reset. Here the first step is a
-  // wait, so just after the reset nothing but that resend can make the decoder see 'a'.
+  // long wait, so for the first few ms after the reset only that resend can make the decoder
+  // see 'a'. VgaSim updates the inputs once per 1024 clocks (1.024 ms at 1 MHz), so each
+  // check lands up to that much after the time asked for: the times below keep clear of it.
   it('resends the held report after the reset', () => {
-    const steps: Step[] = [{ wait_ms: 2 }, { gamepad: [{ buttons: ['a'] }] }, { wait_ms: 2 }];
+    const steps: Step[] = [{ wait_ms: 5 }, { gamepad: [{ buttons: ['a'] }] }, { wait_ms: 2 }];
     const sim = new VgaSim(mod, { ui_in: 0, steps }, 1_000_000);
-    runTo(sim, 1.9);
+    runTo(sim, 3); // before the report (sent at 5 ms)
     expect(decoded(mod)).toEqual({ buttons: [], present: [false, false] });
-    runTo(sim, 3.9);
+    runTo(sim, 6.5); // after it (about 1 ms long), before the pass ends at 7 ms
     expect(decoded(mod)).toEqual({ buttons: ['a'], present: [true, false] });
-    // the pass ends at 4 ms and the design is held in reset for STEP_RESET_MS; then the
-    // resend (about 1 ms), while step 0 (the wait) runs
-    runTo(sim, 4 + STEP_RESET_MS + 1.5);
+    // reset from about 7 ms for STEP_RESET_MS, the resend just after; the next pass's own
+    // report is not until 7 + STEP_RESET_MS + 5 ms
+    runTo(sim, 7 + STEP_RESET_MS + 2.5);
     expect(decoded(mod)).toEqual({ buttons: ['a'], present: [true, false] });
   }, 120000);
 });
