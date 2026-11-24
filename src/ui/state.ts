@@ -200,6 +200,7 @@ function makeState() {
         return;
       }
       setRepl(r);
+      setRamRunning(false);
       setConnectProblem(null);
       port.addEventListener('disconnect', () => dropped());
       say('connected', 'ok');
@@ -213,6 +214,11 @@ function makeState() {
     // an FPGA board's designs are its own bitstreams: always re-read them, as another board numbers them differently
     if (!seq.projects.length) await chooseShuttle(info.shuttle, info.isFpga);
     else if (info.isFpga && seq.shuttle === FPGA_SHUTTLE) await chooseShuttle(FPGA_SHUTTLE, true);
+  }
+
+  /** A test from RAM has started on `r`: only if `r` is still the connected board. */
+  function markRamRunning(r: RawRepl | null) {
+    if (r && repl() === r) setRamRunning(true);
   }
 
   function dropped() {
@@ -238,7 +244,7 @@ function makeState() {
 
   return {
     seq, setSeq, selected, setSelected, projects, projectsFor, projectsError, shuttles, ensureShuttles,
-    board, setBoard, repl, busy, setBusy, boardErrors, setBoardErrors, ramRunning, setRamRunning, log, say, connectProblem,
+    board, setBoard, repl, busy, setBusy, boardErrors, setBoardErrors, ramRunning, setRamRunning, markRamRunning, log, say, connectProblem,
     projectOf, lookup, errors, text, chooseShuttle, loadFile, addProject, updateEntry, removeEntry, moveEntry,
     job, refreshBoard, connect, disconnect,
   };

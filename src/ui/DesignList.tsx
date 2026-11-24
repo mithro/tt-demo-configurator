@@ -239,13 +239,14 @@ function Review(props: { list: Project[]; index: number | null; setIndex: (i: nu
     const proj = p();
     const b = s.board();
     if (!proj || !b || !boardUsable()) return;
+    const r = s.repl();
     void s
       .job('showing on the board', (r) =>
         showOne(r, b, s.seq.shuttle, { address: proj.address, subtile: proj.subtile, duration_ms: 15000, clock_hz: proj.clock_hz || VGA_CLOCK_HZ, ui_in: 0, steps: [] }),
       )
       .then((errs) => {
         if (errs?.length) s.say(errs.join('; '), 'error');
-        else if (errs) s.setRamRunning(true);
+        else if (errs) s.markRamRunning(r);
       });
   };
   return (

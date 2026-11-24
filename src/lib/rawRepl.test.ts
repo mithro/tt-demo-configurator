@@ -83,4 +83,29 @@ describe('RawRepl', () => {
     await t.close();
     await expect(p).rejects.toThrow('the board disconnected');
   });
+  it('reboots from the friendly REPL and waits for main.py to finish before enter()', async () => {
+    const t = new FakeTransport((code) => ({ out: `ran ${code}`, err: '' }));
+    t.bootMs = 300;
+    t.bootOutput = 'loading bitstream tt_um_factory_test\r\n';
+    const r = new RawRepl(t, noSleep);
+    await r.enter();
+    const t0 = Date.now();
+    expect(await r.rebootAndWait(5000)).toBe(true);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(290);
+    // Ctrl-B (friendly REPL) then Ctrl-D (soft reset, runs main.py); no Ctrl-C until after the prompt
+    const after = t.written.slice(t.written.lastIndexOf('\x02'));
+    expect(after).toBe('\x02\x04');
+    await r.enter();
+    expect(await r.check('x')).toBe('ran x');
+  });
+
+  it("says so when main.py hasn't returned in time, and still lets enter() in", async () => {
+    const t = new FakeTransport((code) => ({ out: `ran ${code}`, err: '' }));
+    t.bootMs = null;
+    const r = new RawRepl(t, noSleep);
+    await r.enter();
+    expect(await r.rebootAndWait(200)).toBe(false);
+    await r.enter();
+    expect(await r.check('x')).toBe('ran x');
+  });
 });

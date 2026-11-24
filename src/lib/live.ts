@@ -155,7 +155,15 @@ export async function rebootToBootloader(repl: RawRepl): Promise<void> {
   await repl.exec('import machine\nmachine.bootloader()\n', 1500).catch(() => undefined);
 }
 
-/** Soft-reset the board so it boots as it will on power-up (runs main.py). */
+/**
+ * Soft-reset the board as on power-up and wait until main.py has finished (its >>> prompt),
+ * so a following enter() can't interrupt the boot. False if it hadn't within `timeoutMs`.
+ */
+export function rebootAndWait(repl: RawRepl, timeoutMs = 30000): Promise<boolean> {
+  return repl.rebootAndWait(timeoutMs);
+}
+
+/** Soft-reset the board so it boots as it will on power-up (runs main.py), without waiting. */
 export async function softReboot(repl: RawRepl): Promise<void> {
   // Ctrl-B to the friendly REPL, where Ctrl-D is a soft reset that runs main.py
   await repl.exit();

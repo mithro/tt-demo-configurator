@@ -16,13 +16,12 @@ import {
   planTurnOff,
   stockWarnings,
 } from '~/lib/helper';
-import { applyOps, boardValidate, playOne, rebootToBootloader, runFromRam, showOne, softReboot, stopDemo } from '~/lib/live';
+import { applyOps, boardValidate, playOne, rebootToBootloader, runFromRam, rebootAndWait, showOne, stopDemo } from '~/lib/live';
 import { loadShuttle } from '~/lib/shuttleIndex';
 import { confirmOps } from './ConfirmOps';
 import { state } from './state';
 
 const s = state;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function download(name: string, text: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -130,11 +129,12 @@ export async function testInRam() {
   if (why.length) return s.say(`can't test: ${why.join('; ')}`, 'error');
   for (const w of setupWarnings()) s.say(w, 'error');
   const b = s.board()!;
+  const r = s.repl();
   const errs = await s.job('starting the sequence from RAM', (r) => runFromRam(r, b, current()));
   if (errs === undefined) return;
   s.setBoardErrors(errs);
   if (errs.length) return s.say('the board refused the sequence', 'error');
-  s.setRamRunning(true);
+  s.markRamRunning(r);
   s.say('running from RAM: nothing was written; Stop reboots the board back to normal', 'ok');
 }
 
@@ -142,13 +142,14 @@ export async function previewEntry(i: number, withSteps: boolean) {
   const b = s.board();
   if (!b || !supported()) return;
   const e: Entry = JSON.parse(JSON.stringify(s.seq.projects[i]));
+  const r = s.repl();
   const errs = await s.job(withSteps ? 'playing one design' : 'showing one design', (r) =>
     (withSteps ? playOne : showOne)(r, b, s.seq.shuttle, e),
   );
   if (errs?.length) {
     s.setBoardErrors(errs);
     s.say('the board refused this design', 'error');
-  } else if (errs) s.setRamRunning(true);
+  } else if (errs) s.markRamRunning(r);
 }
 
 export async function stop() {
@@ -199,10 +200,10 @@ export async function reboot(): Promise<boolean> {
   s.setBusy('rebooting');
   let ok = true;
   try {
-    await softReboot(r);
     s.setRamRunning(false);
-    // let main.py finish booting before Ctrl-C reaches it; the FPGA board also loads a bitstream
-    await sleep(s.board()?.isFpga ? REBOOT_WAIT_FPGA_MS : REBOOT_WAIT_MS);
+    // wait for main.py to finish (the FPGA board also loads a bitstream) before Ctrl-C reaches it
+    if (!(await rebootAndWait(r, REBOOT_TIMEOUT_MS))) s.say(`the board was still booting after ${REBOOT_TIMEOUT_MS / 1000} s`, 'error');
+    if (s.repl() !== r) return false; // disconnected while it booted
     await r.enter();
   } catch (e) {
     ok = false;
@@ -214,8 +215,7 @@ export async function reboot(): Promise<boolean> {
   return ok;
 }
 
-const REBOOT_WAIT_MS = 5000;
-const REBOOT_WAIT_FPGA_MS = 12000;
+const REBOOT_TIMEOUT_MS = 30000;
 
 export async function bootloader() {
   if (!supported()) return;

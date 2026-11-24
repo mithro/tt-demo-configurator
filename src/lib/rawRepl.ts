@@ -28,6 +28,8 @@ export class ReplError extends Error {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 const BANNER = enc.encode('raw REPL; CTRL-B to exit\r\n>');
+/** The friendly REPL's prompt. */
+const PROMPT = enc.encode('>>> ');
 const CTRL_A = 0x01;
 const CTRL_B = 0x02;
 const CTRL_C = 0x03;
@@ -206,6 +208,27 @@ export class RawRepl {
   softReset(): Promise<void> {
     return this.run(async () => {
       await this.write(new Uint8Array([CTRL_D]));
+    });
+  }
+
+  /**
+   * Soft-reset the board as on power-up (from the friendly REPL, so main.py runs) and wait
+   * for the >>> prompt MicroPython shows once main.py has returned. True if the prompt came
+   * within `timeoutMs`; false if not (main.py still running, or it never returns).
+   */
+  rebootAndWait(timeoutMs = 30000): Promise<boolean> {
+    return this.run(async () => {
+      await this.write(new Uint8Array([CTRL_B]));
+      await this.readUntil(PROMPT, 5000);
+      await this.write(new Uint8Array([CTRL_D]));
+      await this.readUntil(enc.encode('soft reboot'), 5000);
+      try {
+        await this.readUntil(PROMPT, timeoutMs);
+        return true;
+      } catch (e) {
+        if (this.closed) throw e;
+        return false;
+      }
     });
   }
 

@@ -8,6 +8,7 @@ export type Handler = (code: string) => Promise<{ out: string; err: string } | '
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+const FRIENDLY = '\r\nMicroPython v1.24.0 on 2026-01-01; Raspberry Pi Pico2 with RP2350\r\nType "help()" for more information.\r\n>>> ';
 
 export class FakeTransport implements Transport {
   private queue: Uint8Array[] = [];
@@ -45,6 +46,12 @@ export class FakeTransport implements Transport {
         this.send('raw REPL; CTRL-B to exit\r\n>');
       } else if (byte === 0x02) {
         this.raw = false;
+        this.send(FRIENDLY);
+      } else if (byte === 0x04 && !this.raw) {
+        // a soft reset from the friendly REPL: main.py runs, then the prompt comes back
+        this.stopChatter();
+        this.send('MPY: soft reboot\r\n');
+        if (this.bootMs !== null) setTimeout(() => this.send(this.bootOutput + FRIENDLY), this.bootMs);
       } else if (byte === 0x03) {
         this.code = '';
         if (this.chatterStops === 'ctrl-c') this.stopChatter();
@@ -66,6 +73,11 @@ export class FakeTransport implements Transport {
       }
     }
   }
+
+  /** How long main.py takes after a soft reset from the friendly REPL (null: it never returns). */
+  bootMs: number | null = 0;
+  /** What main.py prints. */
+  bootOutput = '';
 
   /** Text the board prints just before its next "OK", as a demo's timer callback can. */
   beforeOk = '';
