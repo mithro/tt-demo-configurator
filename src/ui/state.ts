@@ -5,6 +5,7 @@ import { createStore, produce } from 'solid-js/store';
 import { BoardInfo, detect, unsupportedReason } from '~/lib/board';
 import { DemoFile, Entry, entryKey, formatDemo, validateDemo } from '~/lib/demoFile';
 import { defaultMatchDeps, FPGA_SHUTTLE, fpgaProjects, matchKnown } from '~/lib/fpga';
+import { softReboot } from '~/lib/live';
 import { RawRepl, SerialTransport } from '~/lib/rawRepl';
 import { indexLookup, loadShuttle, loadShuttles, Project, projectKey, ShuttleInfo } from '~/lib/shuttleIndex';
 
@@ -225,9 +226,12 @@ function makeState() {
     const r = repl();
     setRepl(null);
     setBoard(null);
+    const testing = ramRunning();
     setRamRunning(false);
     if (r) {
-      await r.exit().catch(() => undefined);
+      // a test from RAM is still running: reboot the board back to normal before letting go
+      if (testing) await softReboot(r).catch(() => undefined);
+      else await r.exit().catch(() => undefined);
       await r.close();
     }
   }

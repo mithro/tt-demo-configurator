@@ -135,7 +135,7 @@ export async function testInRam() {
   s.setBoardErrors(errs);
   if (errs.length) return s.say('the board refused the sequence', 'error');
   s.setRamRunning(true);
-  s.say('running from RAM: nothing was written; reset the board to go back to normal', 'ok');
+  s.say('running from RAM: nothing was written; Stop reboots the board back to normal', 'ok');
 }
 
 export async function previewEntry(i: number, withSteps: boolean) {
@@ -152,8 +152,14 @@ export async function previewEntry(i: number, withSteps: boolean) {
 }
 
 export async function stop() {
+  // A test from RAM changed the design, the inputs and (on the FPGA board) the input mode:
+  // reboot, so the board comes up as it does on power-up. A demo the firmware started is
+  // the board's normal state, so that one is only stopped.
+  if (s.ramRunning()) {
+    if (await reboot()) s.say('test stopped: the board was rebooted into its normal state', 'ok');
+    return;
+  }
   await s.job('stopping the demo', (r) => stopDemo(r));
-  s.setRamRunning(false);
   await s.refreshBoard();
 }
 
@@ -186,22 +192,30 @@ export async function resetToStock() {
   if (ops) await apply('Reset to stock', ops, stockWarnings(b, ops));
 }
 
-export async function reboot() {
+/** Soft-reboot the board (main.py runs, as on power-up) and reconnect. False if that failed. */
+export async function reboot(): Promise<boolean> {
   const r = s.repl();
-  if (!r) return;
+  if (!r) return false;
   s.setBusy('rebooting');
+  let ok = true;
   try {
     await softReboot(r);
     s.setRamRunning(false);
-    await sleep(5000);
+    // let main.py finish booting before Ctrl-C reaches it; the FPGA board also loads a bitstream
+    await sleep(s.board()?.isFpga ? REBOOT_WAIT_FPGA_MS : REBOOT_WAIT_MS);
     await r.enter();
   } catch (e) {
+    ok = false;
     s.say(`reboot: ${e}`, 'error');
   } finally {
     s.setBusy(null);
   }
   await s.refreshBoard();
+  return ok;
 }
+
+const REBOOT_WAIT_MS = 5000;
+const REBOOT_WAIT_FPGA_MS = 12000;
 
 export async function bootloader() {
   if (!supported()) return;
@@ -210,6 +224,7 @@ export async function bootloader() {
   const b = s.board();
   if (!r || !b) return;
   await rebootToBootloader(r);
+  s.setRamRunning(false); // the bootloader ended the test; there is no board left to reboot
   await s.disconnect();
   s.say(`the board is now a USB drive (${b.mcu}): copy ${STOCK_FIRMWARE[b.mcu!].uf2} or another ${b.mcu} .uf2 onto it, then reconnect`, 'ok');
 }

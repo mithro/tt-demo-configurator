@@ -9,7 +9,7 @@
 The page gets a stand-in for navigator.serial whose one port is the board's fpgas.online
 serial bridge (a WebSocket), so the app itself, unchanged, connects to the board. Then:
 Connect, the board panel and the design list, open the sequence file, run it from RAM,
-Stop, open "Make permanent" and CANCEL it (nothing is written to the board), and
+Stop (which reboots the board), open "Make permanent" and CANCEL it (nothing is written to the board), and
 "Reboot board" so the board is left as its own main.py starts it. A screenshot is taken
 at each step. Exits non-zero if a step's expected text doesn't appear.
 """
@@ -127,8 +127,10 @@ with sync_playwright() as p:
     time.sleep(12)  # let it switch at least once
     shot(page, 'running')
 
-    print('step: stop', flush=True)
+    print('step: stop (reboots the board back to its normal state)', flush=True)
     button(page, 'Stop').click()
+    time.sleep(2)
+    expect_text(page, 'the board was rebooted into its normal state', 90)
     wait_idle(page)
     shot(page, 'stopped')
 
