@@ -11,6 +11,7 @@ import { bootSdk2, installStockSdk2, sdk2File, sdk2Version } from '~/testing/rea
 import { BoardInfo, detect, unsupportedReason } from './board';
 import { HELPER_DEMO_PY, planInstallHelper, planMakePermanent, planResetToStock, planTurnOff, stockMainFor, stockWarnings } from './helper';
 import { applyOps, boardValidate, runFromRam, stopDemo } from './live';
+import { decodeGamepad } from './gamepad';
 import { RawRepl } from './rawRepl';
 
 const FIX = path.resolve(__dirname, '../../test/fixtures');
@@ -82,6 +83,23 @@ describe.skipIf(!sdk2Version)(`the real SDK ${sdk2Version ?? '2.x'} (RP2040)`, (
     expect(out.trim().split(/\r?\n/).pop()).toBe('True tt_um_10_vga_crossyroad 25000000 0');
     await stopDemo(repl);
     expect((await repl.check('print(tt.demo.running)\n')).trim()).toBe('False');
+  });
+
+  it("plays the Gamepad Pmod through the SDK's own ui_in byte writer", async () => {
+    // record what reaches the SDK's ui_in writer: the mode setter hands it to tt.ui_in.byte_write
+    await repl.check(
+      'import ttboard.util.platform as _plat\n_gw = []\n_gorig = _plat.write_ui_in_byte\n' +
+        'def _grec(v):\n _gw.append(v)\n _gorig(v)\n_plat.write_ui_in_byte = _grec\ntt.mode = tt.mode\n',
+    );
+    const file = JSON.parse(readFileSync(path.join(FIX, 'good', 'gamepad.json'), 'utf8'));
+    expect(await runFromRam(repl, info, file)).toEqual([]);
+    await stopDemo(repl);
+    const out = await repl.check('import json\n_plat.write_ui_in_byte = _gorig\ntt.mode = tt.mode\nprint(json.dumps(_gw))\n');
+    const writes: number[] = JSON.parse(out.trim().split(/\r?\n/).pop()!);
+    // (ui_in.value writes don't come through here: microcotb keeps its own copy of the writer)
+    // the first step's report, one controller with nothing held, over the entry's ui_in 0x8f
+    expect(decodeGamepad(writes)).toEqual([[[], null]]);
+    expect(writes.every((v) => (v & ~0x70) === 0x8f)).toBe(true);
   });
 
   it('installs the helper, boots into the demo, turns it off, and resets to stock byte for byte', async () => {

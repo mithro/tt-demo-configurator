@@ -3,7 +3,8 @@
 import { Alert, Box, Button, Card, CardContent, IconButton, MenuItem, Select, Stack, TextField, Typography } from '@suid/material';
 import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import { parseByte } from '~/lib/byteValue';
-import type { Entry } from '~/lib/demoFile';
+import { type Entry, usesGamepad } from '~/lib/demoFile';
+import { GAMEPAD_PINS } from '~/lib/gamepad';
 import { projectKey, uiName } from '~/lib/shuttleIndex';
 import * as act from './actions';
 import { state as s } from './state';
@@ -27,24 +28,28 @@ function pinLabel(entry: Entry, n: number) {
 /**
  * The 8 ui_in inputs as a row of equal cells, ui[0] on the left, each showing the pin's name
  * and its 0/1 value; click a cell to flip it. Step rows use the same grid, so columns line up.
+ * Bits in `locked` (the gamepad's, when the steps play it) are shown but can't be flipped.
  */
-export function Bits(props: { value: number; onChange: (v: number) => void; entry: Entry; dense?: boolean }) {
+export function Bits(props: { value: number; onChange: (v: number) => void; entry: Entry; dense?: boolean; locked?: number }) {
   return (
     <div style={{ display: 'grid', 'grid-template-columns': 'repeat(8, minmax(0, 1fr))', gap: '3px', flex: 1, 'min-width': 0 }}>
       <For each={[0, 1, 2, 3, 4, 5, 6, 7]}>
         {(n) => {
           const on = () => ((props.value >> n) & 1) === 1;
           const name = () => pinLabel(props.entry, n);
+          const locked = () => ((props.locked ?? 0) >> n) & 1;
           return (
             <button
               type="button"
-              title={`ui[${n}] ${name()}: ${on() ? 1 : 0} (click to flip)`}
+              disabled={!!locked()}
+              title={locked() ? `ui[${n}] ${name()}: driven by the emulated Gamepad Pmod` : `ui[${n}] ${name()}: ${on() ? 1 : 0} (click to flip)`}
               onClick={() => props.onChange(props.value ^ (1 << n))}
               style={{
+                opacity: locked() ? 0.4 : 1,
                 border: `1px solid ${on() ? '#544ead' : '#cfcce8'}`,
                 'border-radius': '4px',
                 padding: props.dense ? '1px 3px' : '3px 4px',
-                cursor: 'pointer',
+                cursor: locked() ? 'not-allowed' : 'pointer',
                 background: on() ? '#544ead' : '#fff',
                 color: on() ? '#fff' : '#333',
                 'min-width': 0,
@@ -56,7 +61,7 @@ export function Bits(props: { value: number; onChange: (v: number) => void; entr
               <Show when={!props.dense}>
                 <div style={{ 'font-size': '10px', opacity: 0.7, overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' }}>{name()}</div>
               </Show>
-              <div style={{ 'font-size': props.dense ? '11px' : '13px', 'font-weight': 600 }}>{on() ? 1 : 0}</div>
+              <div style={{ 'font-size': props.dense ? '11px' : '13px', 'font-weight': 600 }}>{locked() ? 'pad' : on() ? 1 : 0}</div>
             </button>
           );
         }}
@@ -179,9 +184,9 @@ function EntryEditor(props: { index: number }) {
           <Typography variant="caption" sx={{ fontFamily: 'monospace', mr: 1 }}>
             ui_in = 0b{e().ui_in.toString(2).padStart(8, '0')}
           </Typography>
-          <ByteField value={e().ui_in} onChange={(v) => set({ ui_in: v })} />
+          <ByteField value={e().ui_in} onChange={(v) => set({ ui_in: usesGamepad(e().steps) ? v & ~GAMEPAD_PINS : v })} />
         </Stack>
-        <Bits value={e().ui_in} entry={e()} onChange={(v) => set({ ui_in: v })} />
+        <Bits value={e().ui_in} entry={e()} onChange={(v) => set({ ui_in: v })} locked={usesGamepad(e().steps) ? GAMEPAD_PINS : 0} />
 
         <StepEditor index={props.index} />
       </Box>

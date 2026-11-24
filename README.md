@@ -34,10 +34,31 @@ The board runs `/demo.json`, or the firmware's bundled `/shuttles/<shuttle>.demo
 ```
 
 Every field is required and there is one way to write each thing. A step is
-`{"set": 0..255}` (write `ui_in`) or `{"wait_ms": N}`; when the steps run out the project is
-reset and they start again. An invalid file never runs partly: the board logs every problem
+`{"set": 0..255}` (write `ui_in`), `{"gamepad": [...]}` (below) or `{"wait_ms": N}`; when
+the steps run out the project is reset and they start again.
+
+### Gamepad Pmod emulation
+
+Designs that read the [Gamepad Pmod](https://github.com/psychogenic/gamepad-pmod) can be
+played with no Pmod plugged in: the board sends the design what the Pmod would, on
+`ui_in[4]` (latch), `ui_in[5]` (clock) and `ui_in[6]` (data).
+
+```json
+{"gamepad": [{"buttons": ["start"]}]}
+{"gamepad": [{"buttons": ["a"]}, {"buttons": ["left", "x"]}]}
+```
+
+The list is the controllers plugged in, player 1 first (0 to 2), each with the buttons it
+holds, named once each in the order the Pmod sends them: `b`, `y`, `select`, `start`, `up`,
+`down`, `left`, `right`, `a`, `x`, `l`, `r`. They stay held until the next `gamepad` step.
+An entry with gamepad steps keeps bits 4..6 clear in `ui_in` and every `set`, and has a
+clock. The step editor offers gamepad steps for designs the project-search data lists with
+the Gamepad Pmod, with an example script for the Gamepad Pmod Demo and 2048, and the
+simulated preview plays them into the design. The board writes each latch/clock/data level
+from Python, about 17 µs each (1 ms per report) on an RP2350; `scripts/hw-gamepad.ts`
+measures it on a board, from RAM. An invalid file never runs partly: the board logs every problem
 and blinks **E** on the 7-segment display. The full description is
-[demo.md](https://github.com/mithro/tt-micropython-firmware/blob/demo-shuttle-sequences/demo.md)
+[demo.md](https://github.com/mithro/tt-micropython-firmware/blob/demo-gamepad/demo.md)
 in the firmware.
 
 ## How it works with the board's firmware
@@ -95,6 +116,12 @@ Simulator:
   Tiny VGA designs compile and produce a picture.
 - `scripts/sim-preview-check.py`: screenshots of the simulated preview in Chromium
   (Playwright; see its docstring).
+- `scripts/gamepad-preview-check.py`: the same for gamepad steps (the step editor, and the
+  Gamepad Pmod Demo and 2048 reacting in the simulated preview).
+
+Gamepad Pmod emulation on a board: `npx vite-node scripts/hw-gamepad.ts -- <ws url>` loads
+demo.py into RAM, times a report, reads the ui_in pins back and decodes them, and plays
+gamepad steps on the board's timers, then puts the mode and ui_in back.
 
 Pushes to `main` are deployed to GitHub Pages by `.github/workflows/pages.yml`.
 

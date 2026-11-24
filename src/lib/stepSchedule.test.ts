@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
-import { inputsAt, stepSchedule } from './stepSchedule';
+import { gamepadWord } from './gamepad';
+import { inputsAt, padReports, stepSchedule } from './stepSchedule';
 
 describe('stepSchedule', () => {
   it('times each set from the start of a pass', () => {
@@ -10,10 +11,11 @@ describe('stepSchedule', () => {
         { at_ms: 0, ui_in: 6 },
         { at_ms: 40, ui_in: 7 },
       ],
+      pads: [],
     });
   });
   it('has no period without steps', () => {
-    expect(stepSchedule([])).toEqual({ period_ms: 0, sets: [] });
+    expect(stepSchedule([])).toEqual({ period_ms: 0, sets: [], pads: [] });
   });
   it('keeps a set after the last wait at the end of the pass', () => {
     expect(stepSchedule([{ wait_ms: 100 }, { set: 1 }]).sets).toEqual([{ at_ms: 100, ui_in: 1 }]);
@@ -55,5 +57,36 @@ describe('inputsAt', () => {
   });
   it('never changes or resets without steps', () => {
     expect(inputsAt({ ui_in: 5, steps: [] }, 1e9)).toMatchObject({ ui_in: 5, resets: 0 });
+  });
+});
+
+describe('padReports', () => {
+  const start = [{ buttons: ['start' as const] }];
+  const none = [{ buttons: [] }];
+  const steps = [{ wait_ms: 100 }, { gamepad: start }, { wait_ms: 50 }, { gamepad: none }, { wait_ms: 50 }];
+  const W = gamepadWord;
+
+  it('times each gamepad step from the start of a pass', () => {
+    expect(stepSchedule(steps).pads).toEqual([
+      { at_ms: 100, word: W(start) },
+      { at_ms: 150, word: W(none) },
+    ]);
+  });
+  it('gives the reports in [from, to), resending the held buttons after each reset', () => {
+    const s = stepSchedule(steps);
+    expect(padReports(s, 0, 100)).toEqual([]);
+    expect(padReports(s, 0, 100.1)).toEqual([{ at_ms: 100, word: W(start) }]);
+    // the pass is 200 ms, then 2 ms in reset: the next pass starts at 202 with the held buttons
+    expect(padReports(s, 101, 400)).toEqual([
+      { at_ms: 150, word: W(none) },
+      { at_ms: 202, word: W(none) },
+      { at_ms: 302, word: W(start) },
+      { at_ms: 352, word: W(none) },
+    ]);
+    expect(padReports(s, 202 * 50, 202 * 50 + 1)).toEqual([{ at_ms: 202 * 50, word: W(none) }]);
+  });
+  it('sends none without gamepad steps', () => {
+    expect(padReports(stepSchedule([{ set: 1 }, { wait_ms: 10 }]), 0, 1000)).toEqual([]);
+    expect(padReports(stepSchedule([]), 0, 1000)).toEqual([]);
   });
 });

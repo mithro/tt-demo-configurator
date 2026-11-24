@@ -19,52 +19,12 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import WebSocket from 'ws';
 import { detect, readFile, removeFile, unsupportedReason, writeFile } from '../src/lib/board';
 import { formatDemo, parseDemoText } from '../src/lib/demoFile';
 import { HELPER_DEMO_PY, planMakePermanent, planResetToStock } from '../src/lib/helper';
 import { applyOps, boardValidate, runFromRam, softReboot, stopDemo } from '../src/lib/live';
-import { RawRepl, Transport } from '../src/lib/rawRepl';
-
-class WsTransport implements Transport {
-  private queue: Uint8Array[] = [];
-  private waiter: ((b: Uint8Array | null) => void) | null = null;
-  private closed = false;
-  constructor(private ws: WebSocket) {
-    ws.on('message', (data, isBinary) => {
-      if (!isBinary) return; // the bridge's JSON status events
-      const b = new Uint8Array(data as Buffer);
-      if (this.waiter) {
-        const w = this.waiter;
-        this.waiter = null;
-        w(b);
-      } else this.queue.push(b);
-    });
-    ws.on('close', () => {
-      this.closed = true;
-      this.waiter?.(null);
-    });
-  }
-  static open(url: string): Promise<WsTransport> {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
-      ws.on('open', () => resolve(new WsTransport(ws)));
-      ws.on('error', reject);
-    });
-  }
-  async write(data: Uint8Array) {
-    this.ws.send(data);
-  }
-  read(): Promise<Uint8Array | null> {
-    const b = this.queue.shift();
-    if (b) return Promise.resolve(b);
-    if (this.closed) return Promise.resolve(null);
-    return new Promise((r) => (this.waiter = r));
-  }
-  async close() {
-    this.ws.close();
-  }
-}
+import { RawRepl } from '../src/lib/rawRepl';
+import { WsTransport } from './wsTransport';
 
 const sha = (t: string | null) => (t === null ? 'MISSING' : createHash('sha256').update(t).digest('hex').slice(0, 16));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
