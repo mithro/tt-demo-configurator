@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+# Tests and build for pull requests (pages.yml does the same on main, then deploys).
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: astral-sh/setup-uv@v5
+      - run: npm ci
+      # the real SDK 2.x, for src/lib/sdk2.real.test.ts (RP2040 demoboards)
+      - run: uv run --no-project scripts/fetch-sdk2.py
+      - run: npm test
+      # tsc --noEmit, then the Vite build
+      - run: npm run build
