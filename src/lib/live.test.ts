@@ -6,8 +6,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PythonBoard, startPythonBoard } from '~/testing/pythonBoard';
+import { FPGA4_BITSTREAMS } from '~/testing/fpga4';
 import { stubTtboard } from '~/testing/stubTtboard';
-import { HELPER_DEMO_PY } from './helper';
+import { HELPER_DEMO_PY, WRAPPER_MAIN } from './helper';
 import { boardValidate, LiveBoard, playOne, runFromRam, sourcePieces, stopDemo } from './live';
 import { removeFile, writeFile } from './board';
 import { RawRepl } from './rawRepl';
@@ -166,5 +167,51 @@ describe('an RP2040 board on SDK 2.x (stub)', () => {
     expect((await r2.check("print(_tdc_demo['IsRP2040'], 'boot_button_held' in _tdc_demo)\n")).trim()).toBe('False False');
     expect((await r2.check('print(tt.demo.running)\n')).trim()).toBe('True');
     await stopDemo(r2);
+  });
+});
+
+describe('the FPGA board (stub of SDK 3.1.0 with its FPGA breakout)', () => {
+  const fpga: LiveBoard = { firmware: 'stock', mcu: 'RP2350', demoPy: null };
+  const counter = FPGA4_BITSTREAMS.indexOf('tt_um_counter_7seg');
+  const entry = { address: counter, subtile: 0, duration_ms: 15000, clock_hz: 10, ui_in: 0x80, steps: [] };
+  const file = { version: 1 as const, shuttle: 'FPGA', projects: [entry] };
+  let bf: PythonBoard;
+  let rf: RawRepl;
+  beforeAll(async () => {
+    bf = startPythonBoard();
+    rf = new RawRepl(bf.transport, async () => undefined);
+    await rf.enter();
+    await rf.check(stubTtboard({ fpga: FPGA4_BITSTREAMS }));
+  });
+  afterAll(() => bf.stop());
+  it('looks designs up by their bitstream address', async () => {
+    expect(await boardValidate(rf, fpga, JSON.stringify(file))).toEqual([]);
+    const bad = { ...file, projects: [{ ...entry, address: FPGA4_BITSTREAMS.length }] };
+    expect(await boardValidate(rf, fpga, JSON.stringify(bad))).toEqual(['project 0: no project at address 8 on FPGA']);
+  });
+  it('drives ui_in from RAM: it switches the board out of the manual-inputs mode its SDK forces', async () => {
+    expect((await rf.check('from ttboard.demoboard import DemoBoard\nprint(DemoBoard.get().mode_str)\n')).trim()).toBe('ASIC_MANUAL_INPUTS');
+    expect(await runFromRam(rf, fpga, file)).toEqual([]);
+    const out = await rf.check('print(tt.demo.running, tt.shuttle.enabled.name, tt.mode_str, int(tt.ui_in.value), tt.clock)\n');
+    expect(out.trim()).toBe('True tt_um_counter_7seg ASIC_RP_CONTROL 128 10');
+    await stopDemo(rf);
+  });
+  it('drives ui_in at boot through the helper, only when demo mode is on', async () => {
+    const boot = async (ini: string) => {
+      await rf.check(
+        "import sys\nsys.modules.pop('demo', None)\nfrom ttboard.demoboard import DemoBoard\nfrom ttboard.mode import RPMode\n" +
+          'tt = DemoBoard.get()\ntt.mode = RPMode.ASIC_MANUAL_INPUTS\ntt.demo = None\n',
+      );
+      await writeFile(rf, '/config.ini', ini);
+      await rf.check("exec(open('/main.py').read())\n");
+      return (await rf.check('print(bool(tt.demo and tt.demo.running), tt.mode_str, int(tt.ui_in.value))\n')).trim();
+    };
+    await writeFile(rf, '/main_stock.py', 'from ttboard.demoboard import DemoBoard\ntt = DemoBoard.get()\n');
+    await writeFile(rf, '/main.py', WRAPPER_MAIN);
+    await writeFile(rf, '/demo.py', HELPER_DEMO_PY.RP2350);
+    await writeFile(rf, '/demo.json', JSON.stringify(file));
+    expect(await boot('[DEFAULT]\ndemo = yes\n')).toBe('True ASIC_RP_CONTROL 128');
+    await stopDemo(rf);
+    expect(await boot('[DEFAULT]\ndemo = no\n')).toBe('False ASIC_MANUAL_INPUTS 0');
   });
 });

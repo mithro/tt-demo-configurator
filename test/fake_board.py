@@ -7,6 +7,7 @@ A stub `tt` can be installed with the code itself (tests do that).
 """
 import builtins
 import contextlib
+import importlib
 import io
 import json
 import os
@@ -39,6 +40,9 @@ ns = {"__name__": "__main__"}
 for line in sys.stdin:
     req = json.loads(line)
     out, err = io.StringIO(), io.StringIO()
+    # CPython caches each sys.path directory's listing and can miss a module file written
+    # within the same mtime tick (a flaky "No module named 'demo'"); MicroPython has no cache
+    importlib.invalidate_caches()
     with contextlib.redirect_stdout(out):
         try:
             exec(req["code"], ns)

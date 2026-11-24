@@ -19,6 +19,16 @@ export interface Project {
   pinout: Record<string, string>;
   /** From the project-search database; absent when it doesn't have the design. */
   search?: SearchInfo;
+  /**
+   * On the FPGA board: the Tiny Tapeout project this bitstream was matched to by name, whose
+   * title, pinout, sources and recording it is shown with. Absent elsewhere.
+   */
+  known?: { shuttle: string; address: number; subtile: number };
+}
+
+/** The shuttle whose recordings and project-search entries describe a design. */
+export function mediaShuttle(shuttle: string, p: Pick<Project, 'known'> | undefined): string {
+  return p?.known?.shuttle ?? shuttle;
 }
 
 export interface ShuttleInfo {
@@ -111,7 +121,7 @@ export function isTinyVga(p: Project): boolean {
  * database matched from its pin names; with neither, Tiny VGA if its pinout looks like it.
  */
 export function pmodsOf(shuttle: string, p: Project): string[] {
-  const known = [...new Set([...(videoInfo(shuttle, p.macro)?.pmods ?? []), ...(p.search?.pmods ?? [])])];
+  const known = [...new Set([...(videoInfo(mediaShuttle(shuttle, p), p.macro)?.pmods ?? []), ...(p.search?.pmods ?? [])])];
   if (known.length) return known;
   return isTinyVga(p) ? ['tiny-vga'] : [];
 }

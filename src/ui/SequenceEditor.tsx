@@ -4,6 +4,8 @@ import { Alert, Box, Button, Card, CardContent, IconButton, MenuItem, Select, St
 import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
 import { parseByte } from '~/lib/byteValue';
 import { type Entry, usesGamepad } from '~/lib/demoFile';
+import { FPGA_SHUTTLE } from '~/lib/fpga';
+import { formatHz } from '~/lib/frequency';
 import { GAMEPAD_PINS } from '~/lib/gamepad';
 import { projectKey, uiName } from '~/lib/shuttleIndex';
 import * as act from './actions';
@@ -136,7 +138,7 @@ function EntryEditor(props: { index: number }) {
   const e = () => s.seq.projects[props.index];
   const p = () => s.projectOf(e());
   const set = (change: Partial<Entry>) => s.updateEntry(props.index, change);
-  const mhz = (hz: number) => (hz ? `${+(hz / 1e6).toFixed(3)} MHz` : 'clock stopped');
+  const clockText = (hz: number) => (hz ? formatHz(hz) : 'clock stopped');
   return (
     <Show when={e()}>
       <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #eee' }}>
@@ -164,14 +166,14 @@ function EntryEditor(props: { index: number }) {
             <IntField label="Clock (Hz)" value={e().clock_hz} min={0} onChange={(v) => set({ clock_hz: v })} />
             <Stack direction="row" sx={{ alignItems: 'center', px: 0.5 }}>
               <Typography variant="caption" sx={{ flexGrow: 1, opacity: 0.7 }}>
-                {mhz(e().clock_hz)}
+                {clockText(e().clock_hz)}
               </Typography>
               <Select size="small" variant="standard" disableUnderline value="" displayEmpty onChange={(ev) => set({ clock_hz: Number(ev.target.value) })} sx={{ fontSize: '12px' }}>
                 <MenuItem value="">presets</MenuItem>
             <Show when={p()?.clock_hz}>
-              <MenuItem value={p()!.clock_hz}>project&apos;s own ({mhz(p()!.clock_hz)})</MenuItem>
+              <MenuItem value={p()!.clock_hz}>project&apos;s own ({clockText(p()!.clock_hz)})</MenuItem>
             </Show>
-                <For each={CLOCKS}>{(c) => <MenuItem value={c}>{c === 0 ? 'stopped (0)' : mhz(c)}</MenuItem>}</For>
+                <For each={CLOCKS}>{(c) => <MenuItem value={c}>{c === 0 ? 'stopped (0)' : clockText(c)}</MenuItem>}</For>
               </Select>
             </Stack>
           </div>
@@ -226,7 +228,8 @@ export function SequenceEditor() {
   onMount(() => void s.ensureShuttles());
   let fileInput!: HTMLInputElement;
   const shuttleOptions = createMemo(() => {
-    const ids = s.shuttles().map((x) => x.id);
+    // the FPGA board has no shuttle index: it is offered while one is connected
+    const ids = [...(s.board()?.isFpga ? [FPGA_SHUTTLE] : []), ...s.shuttles().map((x) => x.id)];
     return s.seq.shuttle && !ids.includes(s.seq.shuttle) ? [s.seq.shuttle, ...ids] : ids;
   });
   const openFile = async (f: File | undefined) => {
@@ -325,7 +328,7 @@ export function SequenceEditor() {
                   <Typography variant="body2" sx={{ flexGrow: 1 }} noWrap>
                     <b>{s.projectOf(e)?.title ?? `address ${e.address}`}</b>{' '}
                     <span style={{ opacity: 0.7 }}>
-                      {(e.duration_ms / 1000).toFixed(1)} s · {e.clock_hz ? `${(e.clock_hz / 1e6).toFixed(3)} MHz` : 'no clock'} · ui_in {e.ui_in}
+                      {(e.duration_ms / 1000).toFixed(1)} s · {e.clock_hz ? formatHz(e.clock_hz) : 'no clock'} · ui_in {e.ui_in}
                       {e.steps.length ? ` · ${e.steps.length} steps` : ''}
                     </span>
                   </Typography>

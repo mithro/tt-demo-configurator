@@ -51,7 +51,7 @@ function BoardStatus() {
           </Button>
         }
       >
-        <Button size="small" sx={{ color: '#fff' }} onClick={() => s.disconnect()}>
+        <Button size="small" sx={{ color: '#fff' }} onClick={() => s.disconnect()} disabled={s.busy() !== null} title="wait for the current job to finish">
           Disconnect
         </Button>
       </Show>

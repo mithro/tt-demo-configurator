@@ -4,6 +4,8 @@ import { createMemo, createRoot, createSignal } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { BoardInfo, detect, unsupportedReason } from '~/lib/board';
 import { DemoFile, Entry, entryKey, formatDemo, validateDemo } from '~/lib/demoFile';
+import { defaultMatchDeps, FPGA_SHUTTLE, fpgaProjects, matchKnown } from '~/lib/fpga';
+import { softReboot } from '~/lib/live';
 import { RawRepl, SerialTransport } from '~/lib/rawRepl';
 import { indexLookup, loadShuttle, loadShuttles, Project, projectKey, ShuttleInfo } from '~/lib/shuttleIndex';
 
@@ -41,15 +43,32 @@ function makeState() {
   const errors = createMemo(() => (seq.shuttle ? validateDemo(JSON.parse(JSON.stringify(seq)), seq.shuttle, lookup()) : ['choose a shuttle']));
   const text = createMemo(() => formatDemo(seq));
 
-  async function chooseShuttle(id: string) {
-    if (id === seq.shuttle && projectsFor() === id) return;
+  /**
+   * A shuttle's designs: from its index, or for the FPGA board from the board itself (its
+   * bitstreams, named after the Tiny Tapeout projects they match).
+   */
+  async function loadProjects(id: string): Promise<Project[]> {
+    if (id !== FPGA_SHUTTLE) return loadShuttle(id);
+    const b = board();
+    if (!b?.isFpga || !b.fpgaDesigns) {
+      throw new Error('an FPGA board’s designs are the bitstreams on that board: connect it to list them');
+    }
+    await ensureShuttles();
+    const { projects: list, errors: problems } = await matchKnown(fpgaProjects(b.fpgaDesigns), defaultMatchDeps(shuttles().map((x) => x.id)));
+    for (const p of problems) say(p, 'error');
+    return list;
+  }
+
+  /** Make `id` the sequence's shuttle and load its designs (again, with `reload`). */
+  async function chooseShuttle(id: string, reload = false) {
+    if (id === seq.shuttle && projectsFor() === id && !reload) return;
     setSeq('shuttle', id);
     setBoardErrors(null);
     if (!id) return;
     setProjectsError(null);
     try {
-      setBusy(`loading the ${id} project list`);
-      const list = await loadShuttle(id);
+      setBusy(id === FPGA_SHUTTLE ? 'reading the FPGA board’s designs' : `loading the ${id} project list`);
+      const list = await loadProjects(id);
       list.sort((a, b) => a.title.localeCompare(b.title));
       setProjects(list);
       setProjectsFor(id);
@@ -181,6 +200,7 @@ function makeState() {
         return;
       }
       setRepl(r);
+      setRamRunning(false);
       setConnectProblem(null);
       port.addEventListener('disconnect', () => dropped());
       say('connected', 'ok');
@@ -188,8 +208,17 @@ function makeState() {
       setBusy(null);
     }
     const info = await refreshBoard();
-    // an empty sequence follows the board's chip; a sequence being edited is left alone
-    if (info?.shuttle && info.shuttle !== 'unknown' && !unsupportedReason(info) && !seq.projects.length) await chooseShuttle(info.shuttle);
+    if (!info?.shuttle || info.shuttle === 'unknown' || unsupportedReason(info)) return;
+    // an empty sequence follows the board's chip; a sequence being edited is left alone,
+    // but an FPGA sequence gets this board's designs (they are only known from a board)
+    // an FPGA board's designs are its own bitstreams: always re-read them, as another board numbers them differently
+    if (!seq.projects.length) await chooseShuttle(info.shuttle, info.isFpga);
+    else if (info.isFpga && seq.shuttle === FPGA_SHUTTLE) await chooseShuttle(FPGA_SHUTTLE, true);
+  }
+
+  /** A test from RAM has started on `r`: only if `r` is still the connected board. */
+  function markRamRunning(r: RawRepl | null) {
+    if (r && repl() === r) setRamRunning(true);
   }
 
   function dropped() {
@@ -199,20 +228,24 @@ function makeState() {
     say('the board disconnected', 'error');
   }
 
-  async function disconnect() {
+  /** Let go of the board. `leaveRunning`: send it nothing, as its own main.py is running. */
+  async function disconnect(leaveRunning = false) {
     const r = repl();
     setRepl(null);
     setBoard(null);
+    const testing = ramRunning();
     setRamRunning(false);
     if (r) {
-      await r.exit().catch(() => undefined);
+      // a test from RAM is still running: reboot the board back to normal before letting go
+      if (testing) await softReboot(r).catch(() => undefined);
+      else if (!leaveRunning) await r.exit().catch(() => undefined);
       await r.close();
     }
   }
 
   return {
     seq, setSeq, selected, setSelected, projects, projectsFor, projectsError, shuttles, ensureShuttles,
-    board, setBoard, repl, busy, setBusy, boardErrors, setBoardErrors, ramRunning, setRamRunning, log, say, connectProblem,
+    board, setBoard, repl, busy, setBusy, boardErrors, setBoardErrors, ramRunning, setRamRunning, markRamRunning, log, say, connectProblem,
     projectOf, lookup, errors, text, chooseShuttle, loadFile, addProject, updateEntry, removeEntry, moveEntry,
     job, refreshBoard, connect, disconnect,
   };

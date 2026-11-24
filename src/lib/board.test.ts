@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PythonBoard, startPythonBoard } from '~/testing/pythonBoard';
+import { FPGA4_BITSTREAMS } from '~/testing/fpga4';
 import { stubTtboard } from '~/testing/stubTtboard';
 import { detect, dieName, HELPER_MARKER, parseDetect, readFile, removeFile, unsupportedReason, writeFile } from './board';
 import { planInstallHelper, planResetToStock } from './helper';
@@ -141,8 +142,31 @@ describe('unsupportedReason', () => {
     expect(unsupportedReason(info(''))).toContain('(it didn’t say which)');
     expect(why).toContain('still build, preview and download');
   });
-  it('refuses the FPGA board', () => {
-    expect(unsupportedReason(info(etr, '3.1.1', 'FPGA'))).toContain('FPGA breakout');
+  it('accepts the FPGA board (an RP2350 demoboard on SDK 3.x)', () => {
+    expect(unsupportedReason(info(etr, '3.1.0', 'FPGA'))).toBeNull();
+  });
+});
+
+describe('detect on the FPGA board', () => {
+  let bf: PythonBoard;
+  let rf: RawRepl;
+  beforeAll(async () => {
+    bf = startPythonBoard();
+    rf = new RawRepl(bf.transport, async () => undefined);
+    await rf.enter();
+    await rf.check(stubTtboard({ fpga: FPGA4_BITSTREAMS }));
+  });
+  afterAll(() => bf.stop());
+  it('reports the bitstreams by the address the SDK gives each, and the mode it forces', async () => {
+    await writeFile(rf, '/main.py', 'print("stock")\n');
+    const info = await detect(rf);
+    expect(info).toMatchObject({ isFpga: true, shuttle: 'FPGA', sdk: '3.1.0', projects: 8, mode: 'ASIC_MANUAL_INPUTS', firmware: 'stock' });
+    expect(info.rom).toEqual({ shuttle: 'FPGA', repo: '', commit: '' });
+    expect(info.fpgaDesigns).toEqual(FPGA4_BITSTREAMS.map((name, address) => ({ address, name })));
+    expect(unsupportedReason(info)).toBeNull();
+  });
+  it('has no design list on a board with a chip', () => {
+    expect(parseDetect('DETECT:' + JSON.stringify({ machine: 'x RP2350', shuttle: 'tt07', fpga_designs: null })).fpgaDesigns).toBeNull();
   });
 });
 

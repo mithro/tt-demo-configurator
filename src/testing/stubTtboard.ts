@@ -6,14 +6,30 @@
 // mcu 'RP2040' stands in for an RP2040 demoboard on SDK 2.x where the two differ in what
 // the app uses: the platform flag is IsRP2040 (3.x: IsRP2), and project lookups take
 // only addresses (2.x shuttle indexes have no subtiles).
+//
+// fpga (bitstream names, in the order the board lists /bitstreams) stands in for the FPGA
+// breakout board, as SDK 3.1.0's FPGAMux and BitStreamIndex behave: shuttle "FPGA", a
+// design per bitstream addressed by its position in that listing (or by name), enable()
+// returning None, and a ROM with empty repo and commit. As on the real board, the SDK
+// forces ASIC_MANUAL_INPUTS mode at start-up, and in that mode a ui_in write never
+// reaches the design (the RP2350 doesn't drive the pins): ui_in reads 0.
 import type { Mcu } from '~/lib/firmware';
 
 export function stubTtboard(
-  opts: { mcu?: Mcu; shuttle?: string; projects?: number; firmwareDemo?: boolean; sdk?: string; index?: { projects: object[] } } = {},
+  opts: {
+    mcu?: Mcu;
+    shuttle?: string;
+    projects?: number;
+    firmwareDemo?: boolean;
+    sdk?: string;
+    index?: { projects: object[] };
+    fpga?: string[];
+  } = {},
 ) {
-  const { mcu = 'RP2350', projects = 237, firmwareDemo = false, index = { projects: [] } } = opts;
+  const { mcu = 'RP2350', firmwareDemo = false, index = { projects: [] }, fpga } = opts;
   const sdk2 = mcu === 'RP2040';
-  const { shuttle = sdk2 ? 'tt07' : 'ttsky25a', sdk = sdk2 ? '2.0.4' : '3.1.1' } = opts;
+  const { shuttle = fpga ? 'FPGA' : sdk2 ? 'tt07' : 'ttsky25a', sdk = sdk2 ? '2.0.4' : fpga ? '3.1.0' : '3.1.1' } = opts;
+  const projects = opts.projects ?? (fpga ? fpga.length : 237);
   return `
 import sys, types
 sys.implementation._machine = ${JSON.stringify(sdk2 ? 'Raspberry Pi Pico with RP2040' : 'Raspberry Pi Pico2 with RP2350')}
@@ -54,8 +70,50 @@ class _Shuttle:
         if key not in self.by_key: raise AttributeError('Unknown project (%s)' % key)
         return self.by_key[key]
     def __len__(self): return ${projects}
-class _Port:
-    value = 0
+class _BitStream:
+    def __init__(self, mux, name, pid): self.mux, self.name, self.project_index, self.clock_hz = mux, name, pid, 100
+    file = property(lambda self: '/bitstreams/%s.bin' % self.name)
+    def enable(self, force=False):
+        # like ttboard.fpga.fpga_mux.BitStream: returns None, even though it loaded
+        self.mux.enable(self, force)
+class _BitStreamIndex:
+    def __init__(self, mux, names): self.all = [_BitStream(mux, n, i) for i, n in enumerate(names)]
+class _FPGAMux:
+    run = 'FPGA'
+    enabled = None
+    design_enabled_callback = None
+    def __init__(self): self.projects = _BitStreamIndex(self, __import__('json').loads(${JSON.stringify(JSON.stringify(fpga ?? []))}))
+    def enable(self, design, force=False):
+        self.enabled = design
+        if self.design_enabled_callback is not None: self.design_enabled_callback(design)
+        return True
+    def get(self, name):
+        try:
+            asint = int(name)
+            if 0 <= asint < len(self.projects.all): return self.projects.all[asint]
+            raise ValueError(f'Do not have a project {asint}')
+        except ValueError:
+            pass
+        for b in self.projects.all:
+            if b.name == name: return b
+        raise ValueError(f'Do not have a project "{name}"')
+    def __getattr__(self, name):
+        for b in self.projects.all:
+            if b.name == name: return b
+        raise AttributeError(f"What is '{name}'?")
+    def __len__(self): return len(self.projects.all)
+class RPMode:
+    SAFE, ASIC_RP_CONTROL, ASIC_MANUAL_INPUTS = 0, 1, 2
+    @classmethod
+    def to_string(cls, m): return {0: 'SAFE', 1: 'ASIC_RP_CONTROL', 2: 'ASIC_MANUAL_INPUTS'}[m]
+sys.modules['ttboard.mode'].RPMode = RPMode
+class _UiIn:
+    # ui_in: what the RP2350 drives, and only in ASIC_RP_CONTROL mode
+    def __init__(self): self._v = 0
+    def _get(self): return self._v if DemoBoard._tt.mode == RPMode.ASIC_RP_CONTROL else 0
+    def _set(self, v):
+        if DemoBoard._tt.mode == RPMode.ASIC_RP_CONTROL: self._v = v
+    value = property(_get, _set)
 class Pin:
     IN, OUT = 0, 1
 sys.modules['ttboard.pins.upython'].Pin = Pin
@@ -71,13 +129,17 @@ class _Pins:
         for i in range(8): setattr(self, 'ui_in%d' % i, _UiPin())
 class _ROM:
     contents = {'shuttle': ${JSON.stringify(shuttle)}, 'repo': 'TinyTapeout/x', 'commit': 'abcd1234'}
+class _FPGAROM:
+    # ttboard.boot.shuttle_properties.HardcodedShuttle('FPGA'): no contents
+    shuttle, repo, commit = 'FPGA', '', ''
 class _TT:
     version = ${JSON.stringify(sdk)}
-    shuttle = _Shuttle()
-    chip_ROM = _ROM()
-    ui_in = _Port()
+    shuttle = ${fpga ? '_FPGAMux()' : '_Shuttle()'}
+    chip_ROM = ${fpga ? '_FPGAROM()' : '_ROM()'}
+    ui_in = _UiIn()
     pins = _Pins()
-    mode_str = 'ASIC_RP_CONTROL'
+    mode = ${fpga ? 'RPMode.ASIC_MANUAL_INPUTS' : 'RPMode.ASIC_RP_CONTROL'}
+    mode_str = property(lambda self: RPMode.to_string(self.mode))
     clock = None
     def clock_project_PWM(self, hz): self.clock = hz
     def clock_project_stop(self): self.clock = 0

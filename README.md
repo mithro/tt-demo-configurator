@@ -21,6 +21,8 @@ talks to the board over WebSerial).
 - Works with both kinds of demoboard: the RP2350 **Tiny Tapeout Demoboard: ETR** (firmware
   SDK 3.x) and the RP2040 demoboards of TT04 to TT08 (e.g. "TinyTapeout 06+ Demoboard",
   SDK 2.0.0 to 2.0.4).
+- And with the **FPGA board**: an RP2350 demoboard with an FPGA breakout in place of the chip,
+  whose designs are the bitstreams on the board (see below).
 - Ready-made sequences for the four boards shown at the Shenzhen open-silicon meetup (2026-11).
 
 ## The demo.json format
@@ -61,6 +63,25 @@ and blinks **E** on the 7-segment display. The full description is
 [demo.md](https://github.com/mithro/tt-micropython-firmware/blob/demo-gamepad/demo.md)
 in the firmware.
 
+## The FPGA board
+
+The FPGA board's firmware reports the shuttle `FPGA`, and there is no index of its designs:
+they are the bitstreams in its `/bitstreams`. The SDK (3.1.0) numbers them by their place in
+its listing of that directory, and that number is the `address` in `/demo.json` (`subtile` is
+0); the demo runner looks them up exactly as on a chip, and each switch loads the next
+bitstream (about 1.4 s). So the app reads the design list from the connected board, and a
+bitstream named like a Tiny Tapeout project (e.g. `tt_um_factory_test`) is shown with that
+project's details, recording and simulation sources; the others only with their names.
+
+- Adding or removing a bitstream can renumber the others, and a permanent sequence would then
+  show other designs. The app says which bitstream each address is before making it permanent.
+  A sequence made for one FPGA board is only right for another with the same bitstreams.
+- The SDK starts the FPGA board in `ASIC_MANUAL_INPUTS` mode whatever `config.ini` says, and
+  then the RP2350 doesn't drive `ui_in`. A demo run from the app, and the helper at boot when
+  demo mode is on, switch the board to `ASIC_RP_CONTROL` first. The demo-mode firmware doesn't
+  (yet), so on it the designs don't get their inputs after a power-up.
+- Flashing firmware replaces every file, the bitstreams too.
+
 ## How it works with the board's firmware
 
 | Board | Demo mode comes from |
@@ -86,6 +107,15 @@ npm run dev        # http://localhost:5173
 npm test           # unit tests; some run board-side Python in CPython (needs uv)
 npm run build
 ```
+
+On real boards, through an [fpgas.online](https://tinytapeout.fpgas.online/) serial bridge:
+
+- `npx vite-node scripts/hw-test.ts -- <ws-url> <shuttle> [--permanent] ...` runs the app's
+  board code: detect, file transfer, the board's own check, a RAM run and, with
+  `--permanent`, install, reboot and reset to stock, checking every file's SHA-256 is as
+  before. FPGA boards: `... FPGA --designs=tt_um_counter_7seg:10:128,tt_um_vga_pattern:25175000`.
+- `scripts/board-browser-check.py` drives the built app in Chromium against a board, with a
+  stand-in `navigator.serial` whose port is the bridge (nothing is written).
 
 Board-side code is tested without hardware: `test/fake_board.py` runs the Python the app
 sends in CPython, with `/` mapped to a scratch directory. The validator's fixtures in

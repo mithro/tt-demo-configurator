@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-// A board's serial console through an fpgas.online WebSocket bridge, as a RawRepl transport.
+//
+// A raw-REPL Transport over an fpgas.online serial bridge (WebSocket), for the scripts that
+// run the app's board code against a real board instead of WebSerial in a browser.
 import WebSocket from 'ws';
 import type { Transport } from '../src/lib/rawRepl';
 

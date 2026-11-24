@@ -47,7 +47,7 @@ This app makes that workflow repeatable by anyone, from a web page, without writ
   firmware. RP2040 boards are detected and refused with a clear message.
 - Demo sequences on the FPGA emulation board. v1 only detects it, shows "FPGA board" and doesn't offer
   the editor or make-permanent. Full FPGA support (a design list from the bitstreams and an FPGA
-  `shuttle` value) is a later extension.
+  `shuttle` value) is a later extension. **Done 2026-11-23**: see "The FPGA board" below.
 - Simulation preview. v1 previews with the recorded VGA videos. The vga-playground fork with an embed
   mode is a later milestone of this plan, needed for previewing games' `steps`.
 - Flashing firmware from the browser. Like the commander, the app links to the `.uf2` and helps the
@@ -282,9 +282,35 @@ simulation (the user's inputs, but possibly slow). The choice per design is abov
 - Offline mode with preview from vga-playground and the videos. A fork of vga-playground is fine.
   Recorded videos come first in v1, and simulation follows as a later milestone.
 - RP2350 boards only in v1.
-- The FPGA board is detected only in v1, with full support as a later extension.
+- The FPGA board is detected only in v1, with full support as a later extension (added 2026-11-23,
+  see "The FPGA board").
 - The repo deploys the app with GitHub Pages: a static site built and published by a GitHub Actions
   workflow on pushes to `main`, as the commander does.
+
+## The FPGA board (added 2026-11-23)
+
+What the stock firmware (SDK 3.1.0, `ttboard/fpga/fpga_mux.py`) does, and what the app does with it:
+
+- `tt.shuttle` is an `FPGAMux`: `run` is `"FPGA"`, the chip ROM is a hard-coded one with empty repo and
+  commit, and the designs are a `BitStreamIndex` of the `.bin` files in `/bitstreams`, numbered by their
+  place in `os.listdir`. `get(n)` takes that number (or the name); `enable()` streams the file into the
+  iCE40 over SPI (about 1.4 s for a 104 KB UP5K bitstream, printing a dozen lines) and returns None.
+  The design's clock is the RP2350's project clock, as on a chip.
+- So `demo.py` works unchanged: an entry's `address` is the bitstream's number, `subtile` 0, `shuttle`
+  `"FPGA"`, and its validate() and DemoRunner look designs up and judge enables by `tt.shuttle.enabled`.
+- `detect` reports the list (`fpgaDesigns`); the editor's design list for `FPGA` comes from the connected
+  board. A bitstream whose name is a Tiny Tapeout macro is shown with that project (newest shuttle with
+  a recording, else the newest that has it), keeping the board's address and not the chip's danger level.
+- The SDK forces `ASIC_MANUAL_INPUTS` on the FPGA board at start-up, where the RP2350 doesn't drive
+  `ui_in` (measured on fpga-4: an entry's `ui_in` never reached the design). RAM runs and the helper's
+  wrapper (only when demo mode is on) set `ASIC_RP_CONTROL` first. The demo-mode firmware would need
+  the same in `autostart` (open).
+- The address is a position, so changing `/bitstreams` can change what a permanent sequence shows; the
+  app says which bitstream each address is when making it permanent (open: whether the format should
+  name FPGA designs instead).
+- Verified at Welland with `scripts/hw-test.ts`: RAM runs on fpga-4 and tt-fd1a167bd863a198, and
+  `--permanent` on fpga-4 (every file's SHA-256 identical after the reset); and in Chromium against
+  fpga-4 (`scripts/board-browser-check.py`).
 
 ## Builder's calls (Claude's proposals, open to correction)
 

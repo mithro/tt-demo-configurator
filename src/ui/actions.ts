@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import { unsupportedReason } from '~/lib/board';
 import { STOCK_FIRMWARE } from '~/lib/firmware';
 import { DemoFile, ENTRY_FIELDS, Entry, formatDemo, Step } from '~/lib/demoFile';
+import { addressNote } from '~/lib/fpga';
 import { inButtonOrder, isButton, type GamepadController } from '~/lib/gamepad';
 import { importHandmade } from '~/lib/handmade';
 import {
@@ -16,13 +17,12 @@ import {
   planTurnOff,
   stockWarnings,
 } from '~/lib/helper';
-import { applyOps, boardValidate, playOne, rebootToBootloader, runFromRam, showOne, softReboot, stopDemo } from '~/lib/live';
+import { applyOps, boardValidate, playOne, rebootToBootloader, runFromRam, rebootAndWait, showOne, stopDemo } from '~/lib/live';
 import { loadShuttle } from '~/lib/shuttleIndex';
 import { confirmOps } from './ConfirmOps';
 import { state } from './state';
 
 const s = state;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function download(name: string, text: string, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -45,7 +45,16 @@ export function setupWarnings(): string[] {
     );
   }
   if (b.dipOn === null) w.push("couldn't read the ui_in DIP switches: check by hand that all 8 are OFF");
-  if (b.mode && b.mode !== 'ASIC_RP_CONTROL') w.push(`the board is in ${b.mode} mode: the demo needs ASIC_RP_CONTROL to drive ui_in (set mode in config.ini)`);
+  // the FPGA board's SDK ignores config.ini's mode; the app's demo switches it itself
+  if (b.mode && b.mode !== 'ASIC_RP_CONTROL' && !b.isFpga) {
+    w.push(`the board is in ${b.mode} mode: the demo needs ASIC_RP_CONTROL to drive ui_in (set mode in config.ini)`);
+  }
+  if (b.isFpga && b.firmware === 'custom') {
+    w.push(
+      'the demo-mode firmware leaves the FPGA board in its start-up mode, where ui_in isn’t driven: after a power-up ' +
+        'the designs won’t get their ui_in or steps (a test run from here does drive them)',
+    );
+  }
   return w;
 }
 
@@ -57,7 +66,9 @@ export function blockers(): string[] {
   const unsupported = unsupportedReason(b);
   if (unsupported) return [unsupported];
   if (!b.shuttle || b.shuttle === 'unknown') out.push("the chip couldn't be identified: check it is seated properly");
-  if (b.projects === 0) out.push(`the firmware has no project list for ${b.shuttle}: upgrade the firmware`);
+  if (b.projects === 0) {
+    out.push(b.isFpga ? 'this FPGA board has no bitstreams in /bitstreams' : `the firmware has no project list for ${b.shuttle}: upgrade the firmware`);
+  }
   if (b.shuttle && s.seq.shuttle !== b.shuttle) out.push(`the sequence is for ${s.seq.shuttle || '(no shuttle)'} but the chip is ${b.shuttle}`);
   if (s.errors().length) out.push('the sequence has errors (see the list above the sequence)');
   return out;
@@ -119,30 +130,38 @@ export async function testInRam() {
   if (why.length) return s.say(`can't test: ${why.join('; ')}`, 'error');
   for (const w of setupWarnings()) s.say(w, 'error');
   const b = s.board()!;
+  const r = s.repl();
   const errs = await s.job('starting the sequence from RAM', (r) => runFromRam(r, b, current()));
   if (errs === undefined) return;
   s.setBoardErrors(errs);
   if (errs.length) return s.say('the board refused the sequence', 'error');
-  s.setRamRunning(true);
-  s.say('running from RAM: nothing was written; reset the board to go back to normal', 'ok');
+  s.markRamRunning(r);
+  s.say('running from RAM: nothing was written; Stop reboots the board back to normal', 'ok');
 }
 
 export async function previewEntry(i: number, withSteps: boolean) {
   const b = s.board();
   if (!b || !supported()) return;
   const e: Entry = JSON.parse(JSON.stringify(s.seq.projects[i]));
+  const r = s.repl();
   const errs = await s.job(withSteps ? 'playing one design' : 'showing one design', (r) =>
     (withSteps ? playOne : showOne)(r, b, s.seq.shuttle, e),
   );
   if (errs?.length) {
     s.setBoardErrors(errs);
     s.say('the board refused this design', 'error');
-  } else if (errs) s.setRamRunning(true);
+  } else if (errs) s.markRamRunning(r);
 }
 
 export async function stop() {
+  // A test from RAM changed the design, the inputs and (on the FPGA board) the input mode:
+  // reboot, so the board comes up as it does on power-up. A demo the firmware started is
+  // the board's normal state, so that one is only stopped.
+  if (s.ramRunning()) {
+    if ((await reboot()) === 'ready') s.say('test stopped: the board was rebooted into its normal state', 'ok');
+    return;
+  }
   await s.job('stopping the demo', (r) => stopDemo(r));
-  s.setRamRunning(false);
   await s.refreshBoard();
 }
 
@@ -153,7 +172,8 @@ export async function makePermanent() {
   const b = s.board()!;
   const ops = plan(() => planMakePermanent(b, formatDemo(current())));
   if (!ops) return;
-  if (await apply('Make permanent', ops, setupWarnings())) s.say('the board will run this demo every time it powers up (reboot to start it now)', 'ok');
+  const notes = b.fpgaDesigns ? [addressNote(current().projects, b.fpgaDesigns)] : [];
+  if (await apply('Make permanent', ops, [...setupWarnings(), ...notes])) s.say('the board will run this demo every time it powers up (reboot to start it now)', 'ok');
 }
 
 export async function installHelper() {
@@ -174,22 +194,60 @@ export async function resetToStock() {
   if (ops) await apply('Reset to stock', ops, stockWarnings(b, ops));
 }
 
-export async function reboot() {
+/**
+ * Soft-reboot the board (main.py runs, as on power-up). 'ready': main.py returned and the app
+ * is back in the REPL. 'released': main.py is still running (a hand-made board's loop never
+ * returns), which is the board's normal state, so the app let go of the port rather than stop
+ * it. 'failed': the reboot didn't happen as far as the app can tell.
+ */
+export async function reboot(): Promise<'ready' | 'released' | 'failed'> {
   const r = s.repl();
-  if (!r) return;
+  const b = s.board();
+  if (!r) return 'failed';
+  const handmade = b?.firmware === 'handmade';
+  const waitMs = handmade ? HANDMADE_WAIT_MS : REBOOT_TIMEOUT_MS;
   s.setBusy('rebooting');
+  let returned: boolean;
   try {
-    await softReboot(r);
-    s.setRamRunning(false);
-    await sleep(5000);
+    // wait for main.py to finish (the FPGA board also loads a bitstream) before Ctrl-C reaches it
+    returned = await rebootAndWait(r, waitMs);
+  } catch (e) {
+    // the test from RAM may well still be running: ramRunning stays as it was
+    s.setBusy(null);
+    s.say(`reboot: ${e}`, 'error');
+    return 'failed';
+  }
+  s.setRamRunning(false); // the soft reset has happened
+  if (s.repl() !== r) {
+    s.setBusy(null);
+    return 'failed'; // disconnected while it booted
+  }
+  if (!returned) {
+    s.setBusy(null);
+    await s.disconnect(true);
+    s.say(
+      `rebooted: the board is running its own main.py, which ${handmade ? 'loops and never returns' : `hadn't finished after ${waitMs / 1000} s`}. ` +
+        'The app let go of it so as not to stop it; connect again to change it (connecting stops it).',
+      'ok',
+    );
+    return 'released';
+  }
+  let result: 'ready' | 'failed' = 'ready';
+  try {
     await r.enter();
   } catch (e) {
+    result = 'failed';
     s.say(`reboot: ${e}`, 'error');
   } finally {
     s.setBusy(null);
   }
   await s.refreshBoard();
+  return result;
 }
+
+const REBOOT_TIMEOUT_MS = 30000;
+/** A hand-made board's main.py loops (vga_cycle.run), so there is no prompt to wait for. */
+const HANDMADE_WAIT_MS = 3000;
 
 export async function bootloader() {
   if (!supported()) return;
@@ -198,6 +256,7 @@ export async function bootloader() {
   const b = s.board();
   if (!r || !b) return;
   await rebootToBootloader(r);
+  s.setRamRunning(false); // the bootloader ended the test; there is no board left to reboot
   await s.disconnect();
   s.say(`the board is now a USB drive (${b.mcu}): copy ${STOCK_FIRMWARE[b.mcu!].uf2} or another ${b.mcu} .uf2 onto it, then reconnect`, 'ok');
 }

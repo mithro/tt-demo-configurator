@@ -10,6 +10,12 @@ export const HELPER_MARKER = '# tt-demo-configurator helper';
 
 export type FirmwareType = 'custom' | 'helper' | 'stock' | 'handmade';
 
+/** A design on the FPGA board: a bitstream in /bitstreams, at the address the SDK gives it. */
+export interface FpgaDesign {
+  address: number;
+  name: string;
+}
+
 export interface BoardInfo {
   machine: string;
   /** The demoboard's microcontroller, from MicroPython's machine name; null if neither. */
@@ -20,6 +26,8 @@ export interface BoardInfo {
   rom: Record<string, string> | string | null;
   isFpga: boolean;
   projects: number | null;
+  /** The FPGA board's designs, in the SDK's order; null on a board with a chip. */
+  fpgaDesigns: FpgaDesign[] | null;
   firmware: FirmwareType;
   /** config.ini [DEFAULT] demo = yes, as the firmware's parser reads it. */
   demoSetting: boolean;
@@ -76,6 +84,7 @@ export function parseDetect(out: string): BoardInfo {
     rom: r.rom,
     isFpga: typeof r.shuttle === 'string' && r.shuttle.toUpperCase() === 'FPGA',
     projects: r.projects,
+    fpgaDesigns: r.fpga_designs ?? null,
     firmware,
     demoSetting: !!r.demo_setting,
     mode: r.mode ?? null,
@@ -193,12 +202,12 @@ const BOARD_NAME: Record<Mcu, string> = {
  * Why the app can't configure this board, in words for whoever is holding it; null when it can.
  * Everything that writes to the board or runs a design on it checks this first.
  *
- * Supported: RP2040 demoboards on SDK 2.x (from 2.0.0) and RP2350 demoboards on SDK 3.x.
+ * Supported: RP2040 demoboards on SDK 2.x (from 2.0.0) and RP2350 demoboards on SDK 3.x,
+ * with a chip or with the FPGA breakout (an RP2350 demoboard too).
  * An SDK version that isn't a release number (a build from source reports 0.0.0) is let
  * through: the microcontroller still says which SDK line it must be.
  */
 export function unsupportedReason(b: BoardInfo): string | null {
-  if (b.isFpga) return 'This is the FPGA breakout board. Demo sequences are only supported on boards with a Tiny Tapeout chip.';
   const later = 'You can still build, preview and download sequences here.';
   if (!b.mcu) {
     return (

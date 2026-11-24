@@ -76,6 +76,14 @@ def _tt_demo_detect():
             r['projects'] = len(tt.shuttle)
         except Exception as e:
             r['errors'].append('no project count: %s' % e)
+    # The FPGA breakout board has no shuttle index: its designs are the bitstreams in
+    # /bitstreams, each addressed by its position in the SDK's listing of them.
+    r['fpga_designs'] = None
+    if r['shuttle'] == 'FPGA':
+        try:
+            r['fpga_designs'] = [{'address': b.project_index, 'name': b.name} for b in tt.shuttle.projects.all]
+        except Exception as e:
+            r['errors'].append('no FPGA design list: %s' % e)
     # The ui_in DIP switches: each one that is on holds its input high and beats the RP2,
     # so the demo's inputs never reach the design. The SDK's own test (2.x and 3.x): an
     # input that reads high is a switch that is on (and it then leaves that pin undriven).
